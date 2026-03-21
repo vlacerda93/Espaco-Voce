@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="/home/vinicius/Área de trabalho/Faculdade/Estácio/Espaço Você/SQL/espaco_voce.db" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="3"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="1431"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><current_table name="4,6:maindiario"/><default_encoding codec=""/><browse_table_settings/></tab_browse><tab_sql><sql name="SQL 1">-- 1. Cria a tabela de usuários (o alicerce)
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    plano TEXT DEFAULT 'gratuito'
+);
+
+-- 2. Cria a tabela do diário (as reflexões)
+CREATE TABLE IF NOT EXISTS diario (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER,
+    data TEXT,
+    sentimento TEXT,
+    texto TEXT, -- Importante: deixamos apenas 'texto' aqui
+    feedback_ia TEXT,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+);
+
+-- 3. Insere seu usuário para o sistema ter um dono
+INSERT OR IGNORE INTO usuarios (id, nome, email, plano) 
+VALUES (1, 'Vinícius Lacerda', 'viniciuslacerda2@hotmail.com', 'premium');</sql><current_tab id="0"/></tab_sql></sqlb_project>

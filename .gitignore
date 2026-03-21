@@ -1,0 +1,21 @@
+# Ambiente Virtual
+venv/
+.venv/
+env/
+
+# Configurações e Segredos
+.env
+
+# Banco de Dados
+SQL/*.db
+
+# Python
+**/__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
