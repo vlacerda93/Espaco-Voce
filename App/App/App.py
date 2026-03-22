@@ -17,23 +17,54 @@ class State(rx.State):
     is_processing: bool = False
     sentiment: str = "Neutro"
     
+    # --- ONBOARDING STATE ---
+    show_onboarding: bool = False
+    onboarding_step: int = 1
+    onboarding_nome: str = ""
+    onboarding_gosta: str = ""
+    onboarding_bom: str = ""
+    onboarding_precisa: str = ""
+    onboarding_pago: str = ""
+    
     humores: list[dict] = [
         {"e": "😊", "l": "Feliz"}, {"e": "😔", "l": "Triste"},
         {"e": "😤", "l": "Ansioso"}, {"e": "🤔", "l": "Reflexivo"}
     ]
 
-    def set_user_input(self, val: str):
-        self.user_input = val
-
-    def set_sentiment(self, val: str):
-        self.sentiment = val
+    def set_user_input(self, val: str): self.user_input = val
+    def set_sentiment(self, val: str): self.sentiment = val
+    def set_onboarding_nome(self, val: str): self.onboarding_nome = val
+    def set_onboarding_gosta(self, val: str): self.onboarding_gosta = val
+    def set_onboarding_bom(self, val: str): self.onboarding_bom = val
+    def set_onboarding_precisa(self, val: str): self.onboarding_precisa = val
+    def set_onboarding_pago(self, val: str): self.onboarding_pago = val
+    
+    def set_onboarding_step(self, step: int): self.onboarding_step = step
 
     def on_load(self):
         perfil = banco_dados.buscar_dados_usuario(self.usuario_id)
-        if perfil: self.nome_usuario = perfil['nome']
+        if perfil:
+            self.nome_usuario = perfil['nome']
+            self.onboarding_nome = perfil['nome']
+            # Se não tiver preenchido o Ikigai, mostra onboarding
+            if not perfil['gosta_fazer']:
+                self.show_onboarding = True
+            else:
+                self.show_onboarding = False
+        
         hist = banco_dados.visualizar_reflexoes_usuario(self.usuario_id, limite=10)
         self.messages = [{"role": "user" if i%2==0 else "assistant", "content": h[2] if i%2==0 else h[3]} 
                          for i, h in enumerate(reversed(hist or []))]
+
+    def finish_onboarding(self):
+        success = banco_dados.atualizar_perfil_ikigai(
+            self.usuario_id, self.onboarding_nome, self.onboarding_gosta,
+            self.onboarding_bom, self.onboarding_precisa, self.onboarding_pago
+        )
+        if success:
+            self.nome_usuario = self.onboarding_nome
+            self.show_onboarding = False
+            return rx.toast.info("Perfil Ikigai atualizado! Bem-vindo.", position="top-center")
 
     async def handle_submit(self):
         if not self.user_input: return
@@ -53,29 +84,288 @@ class State(rx.State):
 def ikigai() -> rx.Component:
     return rx.center(
         rx.html("""
-        <div style="background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(240,245,240,1) 100%); padding: 25px; border-radius: 50%; box-shadow: 0 10px 30px rgba(0,0,0,0.08);">
-            <svg width="240" height="240" viewBox="0 0 220 220" style="filter: drop-shadow(0 4px 10px rgba(0,0,0,0.15));">
-                <!-- Círculos com opacidade aumentada para 0.5 -->
-                <circle cx="110" cy="75" r="55" fill="#FF7896" fill-opacity="0.5" stroke="#FF4D6D" stroke-width="2.5"/>
-                <circle cx="110" cy="145" r="55" fill="#78FF96" fill-opacity="0.5" stroke="#2DCE89" stroke-width="2.5"/>
-                <circle cx="75" cy="110" r="55" fill="#78B4FF" fill-opacity="0.5" stroke="#11CDEF" stroke-width="2.5"/>
-                <circle cx="145" cy="110" r="55" fill="#FFDC78" fill-opacity="0.5" stroke="#FDBF5E" stroke-width="2.5"/>
+        <div style="position: relative; width: 280px; height: 280px; display: flex; align-items: center; justify-content: center;">
+            <!-- Glow background -->
+            <div style="position: absolute; width: 200px; height: 200px; background: radial-gradient(circle, rgba(112,191,182,0.2) 0%, rgba(238,195,115,0.1) 100%); filter: blur(35px); border-radius: 50%;"></div>
+            
+            <svg width="250" height="250" viewBox="0 0 220 220" style="z-index: 1;">
+                <!-- Círculos com cores suaves e bordas finas -->
+                <circle cx="110" cy="75" r="55" fill="rgba(112, 191, 182, 0.35)" stroke="#70BFB6" stroke-width="1"/>
+                <circle cx="110" cy="145" r="55" fill="rgba(151, 140, 185, 0.35)" stroke="#978CB9" stroke-width="1"/>
+                <circle cx="75" cy="110" r="55" fill="rgba(102, 182, 206, 0.35)" stroke="#66B6CE" stroke-width="1"/>
+                <circle cx="145" cy="110" r="55" fill="rgba(238, 195, 115, 0.35)" stroke="#EEC373" stroke-width="1"/>
                 
-                <text x="110" y="45" text-anchor="middle" font-size="11" fill="#C92A2A" font-weight="900" font-family="sans-serif">O QUE AMA</text>
-                <text x="110" y="195" text-anchor="middle" font-size="11" fill="#099268" font-weight="900" font-family="sans-serif">POR QUE É PAGO</text>
-                <text x="40" y="113" text-anchor="middle" font-size="11" fill="#1864AB" font-weight="900" font-family="sans-serif" transform="rotate(-90 40 113)">BOM EM</text>
-                <text x="180" y="113" text-anchor="middle" font-size="11" fill="#DEB100" font-weight="900" font-family="sans-serif" transform="rotate(90 180 113)">PRECISA</text>
+                <!-- Textos por Quadrante com tspan para multi-linha -->
+                <!-- Topo: O que você ama -->
+                <text x="110" y="45" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
+                    <tspan x="110" dy="0">O QUE</tspan>
+                    <tspan x="110" dy="9">VOCÊ AMA</tspan>
+                </text>
                 
-                <text x="110" y="118" text-anchor="middle" font-size="18" font-weight="1000" fill="#1A202C" font-family="sans-serif">IKIGAI</text>
+                <!-- Baixo: Pelo que pode ser pago -->
+                <text x="110" y="178" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
+                    <tspan x="110" dy="0">SER PAGO</tspan>
+                    <tspan x="110" dy="9">POR ISSO</tspan>
+                </text>
+                
+                <!-- Esquerda: No que é bom -->
+                <text x="50" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
+                    <tspan x="50" dy="0">NO QUE</tspan>
+                    <tspan x="50" dy="9">É BOM</tspan>
+                </text>
+                
+                <!-- Direita: O que o mundo precisa -->
+                <text x="175" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
+                    <tspan x="175" dy="0">O MUNDO</tspan>
+                    <tspan x="175" dy="9">PRECISA</tspan>
+                </text>
+                
+                <!-- Bolha Central "Ikigai" -->
+                <circle cx="110" cy="110" r="24" fill="white" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))"/>
+                <text x="110" y="113" text-anchor="middle" font-size="10" font-weight="800" fill="#1A202C" font-family="sans-serif">Ikigai</text>
             </svg>
         </div>
         """),
-        padding_y="2.5em"
+        padding_y="1em"
+    )
+
+def card_custom(title: str, content: rx.Component, icon: str = "") -> rx.Component:
+    return rx.vstack(
+        rx.hstack(
+            rx.icon(tag=icon, size=18) if icon else rx.box(),
+            rx.text(title, size="4", weight="bold", color="#1A202C"),
+            spacing="2",
+            padding_bottom="0.5em",
+        ),
+        content,
+        bg="rgba(249, 249, 244, 0.8)",
+        backdrop_filter="blur(10px)",
+        padding="1.5em",
+        border_radius="25px",
+        box_shadow="0 4px 20px rgba(0,0,0,0.03)",
+        border="1px solid rgba(255,255,255,0.6)",
+        width="100%",
+        align_items="start",
+    )
+
+def onboarding_view() -> rx.Component:
+    return rx.center(
+        rx.vstack(
+            rx.heading("Bem-vindo ao Espaço Você", size="8", weight="bold", color="#1A202C", text_align="center"),
+            rx.text("Vamos iniciar sua jornada para encontrar seu Ikigai.", size="4", color="#4A5568", text_align="center"),
+            
+            # --- STEP 1: NOME ---
+            rx.cond(
+                State.onboarding_step == 1,
+                rx.vstack(
+                    rx.input(value=State.onboarding_nome, on_change=State.set_onboarding_nome, placeholder="Seu nome...", size="3", width="100%", radius="large"),
+                    rx.button("Próximo", on_click=State.set_onboarding_step(2), width="100%", color_scheme="grass", size="3"),
+                    spacing="4", width="100%"
+                )
+            ),
+            
+            # --- STEP 2: O QUE AMA ---
+            rx.cond(
+                State.onboarding_step == 2,
+                rx.vstack(
+                    rx.text("❤️ O que você ama fazer?", weight="bold", size="5"),
+                    rx.text("Suas paixões, hobbies e interesses.", size="2", opacity=0.8),
+                    rx.text_area(value=State.onboarding_gosta, on_change=State.set_onboarding_gosta, placeholder="Eu amo...", size="3", width="100%", height="120px"),
+                    rx.hstack(
+                        rx.button("Voltar", on_click=State.set_onboarding_step(1), variant="soft"),
+                        rx.button("Próximo", on_click=State.set_onboarding_step(3), color_scheme="grass", flex="1"),
+                        width="100%"
+                    ),
+                    spacing="4", width="100%"
+                )
+            ),
+            
+            # --- STEP 3: BOM EM ---
+            rx.cond(
+                State.onboarding_step == 3,
+                rx.vstack(
+                    rx.text("💪 No que você é bom?", weight="bold", size="5"),
+                    rx.text("Suas habilidades, talentos e competências.", size="2", opacity=0.8),
+                    rx.text_area(value=State.onboarding_bom, on_change=State.set_onboarding_bom, placeholder="Eu sou bom em...", size="3", width="100%", height="120px"),
+                    rx.hstack(
+                        rx.button("Voltar", on_click=State.set_onboarding_step(2), variant="soft"),
+                        rx.button("Próximo", on_click=State.set_onboarding_step(4), color_scheme="grass", flex="1"),
+                        width="100%"
+                    ),
+                    spacing="4", width="100%"
+                )
+            ),
+            
+            # --- STEP 4: MUNDO PRECISA ---
+            rx.cond(
+                State.onboarding_step == 4,
+                rx.vstack(
+                    rx.text("🌍 O que o mundo precisa?", weight="bold", size="5"),
+                    rx.text("Sua contribuição para o bem-estar da sociedade.", size="2", opacity=0.8),
+                    rx.text_area(value=State.onboarding_precisa, on_change=State.set_onboarding_precisa, placeholder="O mundo precisa de...", size="3", width="100%", height="120px"),
+                    rx.hstack(
+                        rx.button("Voltar", on_click=State.set_onboarding_step(3), variant="soft"),
+                        rx.button("Próximo", on_click=State.set_onboarding_step(5), color_scheme="grass", flex="1"),
+                        width="100%"
+                    ),
+                    spacing="4", width="100%"
+                )
+            ),
+            
+            # --- STEP 5: PAGO PARA ---
+            rx.cond(
+                State.onboarding_step == 5,
+                rx.vstack(
+                    rx.text("💰 Pelo que você pode ser pago?", weight="bold", size="5"),
+                    rx.text("Sua profissão, trabalho ou fontes de renda estimadas.", size="2", opacity=0.8),
+                    rx.text_area(value=State.onboarding_pago, on_change=State.set_onboarding_pago, placeholder="Eu posso ser pago por...", size="3", width="100%", height="120px"),
+                    rx.hstack(
+                        rx.button("Voltar", on_click=State.set_onboarding_step(4), variant="soft"),
+                        rx.button("Finalizar", on_click=State.finish_onboarding, color_scheme="grass", flex="1"),
+                        width="100%"
+                    ),
+                    spacing="4", width="100%"
+                )
+            ),
+            
+            bg="white",
+            padding="3em",
+            border_radius="3xl",
+            box_shadow="0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+            width="100%",
+            max_width="450px",
+            spacing="6",
+        ),
+        width="100%",
+        height="100vh",
+        background="linear-gradient(160deg, #D8E5D8 0%, #FDFCFB 100%)",
     )
 
 def index() -> rx.Component:
     return rx.box(
-        # --- BACKGROUND GRADIENT (Deepened) ---
+        rx.cond(
+            State.show_onboarding,
+            onboarding_view(),
+            rx.box(
+                # --- BACKGROUND GRADIENT (Refined Glow) ---
+                rx.box(
+                    position="fixed",
+                    top="0",
+                    left="0",
+                    width="100%",
+                    height="100%",
+                    background="radial-gradient(circle at 80% 10%, rgba(238,195,115,0.1) 0%, transparent 40%), radial-gradient(circle at 10% 80%, rgba(112,191,182,0.1) 0%, transparent 40%), #FFFFFF",
+                    z_index="-1",
+                ),
+                rx.container(
+                    rx.vstack(
+                        # --- HEADER (Reference Match) ---
+                        rx.vstack(
+                            rx.text("Bem-vindo ao Ikigai", size="2", weight="medium", color="#718096", opacity=0.8),
+                            rx.heading("Sua Jornada para o Ikigai", size="8", weight="bold", color="#1A202C"),
+                            align_items="center",
+                            padding_top="2em",
+                        ),
+                        
+                        # --- IKIGAI DIAGRAM ---
+                        ikigai(),
+                        
+                        # --- DASHBOARD GRID ---
+                        rx.flex(
+                            # Lado Esquerdo: Biblioteca
+                            rx.box(
+                                card_custom(
+                                    "Biblioteca de Sessões",
+                                    rx.vstack(
+                                        rx.text("Caminhos para o Equilíbrio", size="3", color="#4A5568", weight="medium"),
+                                        rx.box(
+                                            rx.hstack(rx.icon(tag="users", size=14), rx.text("Exploração do 'O que você ama'", size="2"), spacing="2"),
+                                            rx.hstack(rx.icon(tag="trophy", size=14), rx.text("Desenvolvimento de Talentos", size="2"), spacing="2"),
+                                            rx.hstack(rx.icon(tag="globe", size=14), rx.text("Ação no Mundo", size="2"), spacing="2"),
+                                            rx.hstack(rx.icon(tag="banknote", size=14), rx.text("Pelo que você pode ser pago", size="2"), spacing="2"),
+                                            spacing="2",
+                                            padding_top="0.5em",
+                                            color="#718096"
+                                        ),
+                                        spacing="3",
+                                        align_items="start",
+                                    ),
+                                    icon="users"
+                                ),
+                                width=["100%", "100%", "58%"],
+                            ),
+                            # Lado Direito: Insights e Toggle
+                            rx.vstack(
+                                card_custom(
+                                    "Diário de Insights",
+                                    rx.text("Suas últimas reflexões estão guardadas aqui.", size="2", color="#718096"),
+                                    icon="notebook-pen"
+                                ),
+                                rx.box(
+                                    rx.hstack(
+                                        rx.icon(tag="sun", size=16),
+                                        rx.hstack(
+                                            rx.text("MODO: CLARO | ESCURO", size="1", weight="bold", color="#718096"),
+                                            rx.switch(color_scheme="gray", size="1"),
+                                            spacing="2",
+                                        ),
+                                        rx.icon(tag="moon", size=16),
+                                        justify="between",
+                                        width="100%",
+                                    ),
+                                    padding="1em",
+                                    bg="rgba(249, 249, 244, 0.8)",
+                                    border_radius="xl",
+                                    width="100%",
+                                ),
+                                card_custom(
+                                    "",
+                                    rx.text("Registro de Descobertas de Hoje", size="3", color="#718096", italic=True),
+                                ),
+                                spacing="4",
+                                width=["100%", "100%", "38%"],
+                            ),
+                            width="100%",
+                            spacing="4",
+                            flex_wrap="wrap",
+                            justify="center",
+                        ),
+                        
+                        # --- FOOTER BUTTON ---
+                        rx.vstack(
+                            rx.button(
+                                "Start Journey",
+                                size="4",
+                                radius="full",
+                                background="linear-gradient(90deg, #70BFB6 0%, #66B6CE 100%)",
+                                color="white",
+                                padding_x="3em",
+                                padding_y="1.5em",
+                                box_shadow="0 10px 30px rgba(112, 191, 182, 0.4)",
+                                _hover={"transform": "scale(1.05)", "box_shadow": "0 15px 40px rgba(112, 191, 182, 0.5)"},
+                                # Ao clicar, abre o chat
+                                on_click=lambda: rx.redirect("/chat"), 
+                            ),
+                            rx.text("Começar Minha Descoberta", size="2", color="#718096", opacity=0.6),
+                            padding_y="3em",
+                            align_items="center",
+                        ),
+                        
+                        spacing="6",
+                        width="100%",
+                        max_width="650px", 
+                        margin_x="auto",
+                    )
+                ),
+            )
+        ),
+        min_height="100vh",
+        on_mount=State.on_load
+    )
+
+# --- CHAT PAGE ---
+def chat_page() -> rx.Component:
+    return rx.box(
         rx.box(
             position="fixed",
             top="0",
@@ -87,30 +377,13 @@ def index() -> rx.Component:
         ),
         rx.container(
             rx.vstack(
-                # --- HEADER ---
                 rx.hstack(
-                    rx.avatar(fallback="EV", variant="solid", color_scheme="grass", size="2"),
-                    rx.heading("Espaço Você", size="8", weight="bold", color="#1A202C"),
-                    justify="center",
+                    rx.button(rx.icon(tag="arrow-left"), on_click=lambda: rx.redirect("/"), variant="ghost"),
+                    rx.heading("Mentor IA", size="6", weight="bold"),
+                    justify="start",
                     width="100%",
-                    padding_y="2em",
+                    padding_y="1em",
                 ),
-                
-                # --- IKIGAI SECTION ---
-                rx.vstack(
-                    rx.text("Sua Jornada de Equilíbrio", size="5", weight="bold", color="#2D3748"),
-                    ikigai(),
-                    bg="rgba(255, 255, 255, 0.85)",
-                    backdrop_filter="blur(12px)",
-                    padding="2.5em",
-                    border_radius="3xl",
-                    width="100%",
-                    box_shadow="0 15px 35px rgba(0,0,0,0.1)",
-                    border="1px solid rgba(255,255,255,0.6)",
-                    align_items="center",
-                ),
-                
-                # --- CHAT SECTION ---
                 rx.vstack(
                     rx.foreach(State.messages, lambda m: rx.box(
                         rx.flex(
@@ -120,11 +393,8 @@ def index() -> rx.Component:
                                 color="#1A202C",
                                 padding="1.2em",
                                 border_radius="2xl",
-                                border_bottom_right_radius=rx.cond(m["role"]=="user", "4px", "2xl"),
-                                border_bottom_left_radius=rx.cond(m["role"]=="user", "2xl", "4px"),
                                 max_width="90%",
-                                box_shadow="0 4px 12px rgba(0,0,0,0.05)",
-                                border="1px solid rgba(0,0,0,0.05)",
+                                box_shadow="sm",
                             ),
                             justify=rx.cond(m["role"]=="user", "end", "start"),
                             width="100%",
@@ -132,80 +402,41 @@ def index() -> rx.Component:
                         width="100%",
                     )),
                     width="100%",
-                    spacing="6",
-                    padding_y="3em",
+                    spacing="4",
                 ),
-                
-                # Espaço para não cobrir pelo input fixo
-                rx.box(height="200px"),
-                width="100%",
-                max_width="550px", 
-                margin_x="auto",
+                rx.box(height="120px"),
             )
         ),
-        
-        # --- INPUT INTERACTION AREA ---
         rx.box(
             rx.container(
-                rx.vstack(
-                    # Mood Selection
-                    rx.hstack(
-                        rx.foreach(State.humores, lambda h: rx.button(
-                            rx.text(h["e"], size="6"),
-                            on_click=lambda: State.set_sentiment(h["l"]),
-                            variant=rx.cond(State.sentiment==h["l"], "solid", "surface"),
-                            color_scheme="grass",
-                            border_radius="full",
-                            size="3",
-                            _hover={"transform": "scale(1.1)"},
-                            transition="all 0.2s",
-                        )),
-                        justify="center",
+                rx.hstack(
+                    rx.input(
+                        placeholder="Como você se sente hoje?",
+                        value=State.user_input,
+                        on_change=State.set_user_input,
                         width="100%",
-                        spacing="4",
-                        padding_bottom="0.8em",
+                        radius="full",
+                        bg="white",
+                        on_key_down=State.handle_submit_enter,
                     ),
-                    # Input field
-                    rx.hstack(
-                        rx.input(
-                            placeholder="Como você se sente hoje?",
-                            value=State.user_input,
-                            on_change=State.set_user_input,
-                            width="100%",
-                            variant="surface",
-                            size="3",
-                            radius="full",
-                            bg="white",
-                            border="1px solid #E2E8F0",
-                            on_key_down=State.handle_submit_enter,
-                        ),
-                        rx.button(
-                            rx.cond(State.is_processing, rx.spinner(size="2"), rx.icon(tag="send", size=22)),
-                            on_click=State.handle_submit,
-                            size="3",
-                            radius="full",
-                            color_scheme="grass",
-                            box_shadow="0 4px 10px rgba(0,128,0,0.2)",
-                        ),
-                        width="100%",
-                        spacing="3",
+                    rx.button(
+                        rx.cond(State.is_processing, rx.spinner(size="2"), rx.icon(tag="send")),
+                        on_click=State.handle_submit,
+                        radius="full",
+                        color_scheme="grass",
                     ),
-                    spacing="2",
+                    width="100%",
+                    spacing="3",
                 ),
-                max_width="550px",
-                margin_x="auto",
+                max_width="600px",
             ),
             position="fixed",
             bottom="0",
             width="100%",
-            bg="rgba(255, 255, 255, 0.92)",
-            backdrop_filter="blur(20px)",
             padding="2em",
-            border_top="1px solid rgba(0,0,0,0.08)",
-            z_index="10",
-        ),
-        min_height="100vh",
-        on_mount=State.on_load
+            bg="rgba(255,255,255,0.8)",
+            backdrop_filter="blur(10px)",
+        )
     )
 
 app = rx.App(
@@ -215,5 +446,6 @@ app = rx.App(
         appearance="light",
     )
 )
-app.add_page(index)
+app.add_page(index, route="/")
+app.add_page(chat_page, route="/chat")
 

@@ -40,15 +40,27 @@ async def analisar_sentimento_e_salvar(texto_usuario, usuario_id=1, sentimento_m
     # 2. BUSCA A MEMÓRIA RECENTE
     memoria_passada = await buscar_historico(usuario_id, limite=12)
     
-    # 3. MONTA O PROMPT
+    # 3. MONTA O PROMPT COM CONCEITOS IKIGAI
+    prompt_ikigai = ""
+    if perfil and perfil['gosta_fazer']:
+        prompt_ikigai = (
+            f"\nPerfil Ikigai de {nome_usuario}:\n"
+            f"- O que gosta (Amor): {perfil['gosta_fazer']}\n"
+            f"- No que é bom (Talento): {perfil['bom_em']}\n"
+            f"- O que o mundo precisa (Missão): {perfil['mundo_precisa']}\n"
+            f"- O que pode ser pago (Renda): {perfil['pago_para']}\n"
+        )
+
     prompt_sistema = (
         "Você é um mentor empático do app Espaço Você. "
         f"Seu usuário é {nome_usuario}. "
         f"O usuário se sente atualmente: {sentimento_manual}. "
+        f"{prompt_ikigai}"
         "\n\nHistórico recente de conversas para análise de padrões:\n"
         f"{memoria_passada}\n"
-        "INSTRUÇÃO: Não apenas repita fatos. Tente conectar os pontos. "
-        "Use o histórico para entender quem é o usuário."
+        "INSTRUÇÃO: Seu objetivo principal é ajudar o usuário a encontrar seu Ikigai. "
+        "Use o histórico e os 4 pilares acima para conectar os pontos. "
+        "Seja empático, mas desafie o usuário a refletir sobre seu propósito."
     )
 
     # 4. ENVIA PARA A GROQ (Async)

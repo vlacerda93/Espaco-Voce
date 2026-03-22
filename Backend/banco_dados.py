@@ -7,19 +7,35 @@ diretorio_atual = os.path.dirname(os.path.abspath(__file__))
 caminho_banco = os.path.join(diretorio_atual, '..', 'SQL', 'espaco_voce.db')
 
 def buscar_dados_usuario(usuario_id):
-    """Busca Nome, Email e Plano do usuário para tornar o prompt da IA dinâmico."""
+    """Busca Nome, Email, Plano e dados de Ikigai do usuário."""
     try:
         conn = sqlite3.connect(caminho_banco)
-        # Permite acessar os dados pelo nome da coluna (ex: linha['nome'])
         conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
-        cursor.execute("SELECT nome, email, plano FROM usuarios WHERE id = ?", (usuario_id,))
+        cursor.execute("SELECT nome, email, plano, gosta_fazer, bom_em, mundo_precisa, pago_para FROM usuarios WHERE id = ?", (usuario_id,))
         usuario = cursor.fetchone()
         conn.close()
         return usuario
     except Exception as e:
         print(f"❌ Erro ao buscar perfil do usuário: {e}")
         return None
+
+def atualizar_perfil_ikigai(usuario_id, nome, gosta, bom, precisa, pago):
+    """Atualiza o perfil completo do usuário incluindo os 4 pilares do Ikigai."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE usuarios 
+            SET nome = ?, gosta_fazer = ?, bom_em = ?, mundo_precisa = ?, pago_para = ?
+            WHERE id = ?
+        """, (nome, gosta, bom, precisa, pago, usuario_id))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao atualizar perfil: {e}")
+        return False
 
 def visualizar_reflexoes_usuario(usuario_id, limite=3):
     """Busca as últimas entradas do diário para dar memória persistente à IA."""

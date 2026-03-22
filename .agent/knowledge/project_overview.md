@@ -27,7 +27,16 @@
   - `espaco_voce.db`: The SQLite database file.
   - `espaco_voce.sqbpro`: SQLite Browser project file for schema management.
 - `Curadoria/`: (Likely content or research materials).
-- `PlanejamentoEV.odt`: Project planning document.
+- `PlanejamentoEV.odt`:
+## 🎯 Conceitos Centrais (Estratégia Ikigai)
+
+O aplicativo é estruturado em torno dos **4 Pilares do Ikigai**:
+1.  **O que você gosta de fazer**: Suas paixões e interesses (Amor).
+2.  **O que você é bom em fazer**: Suas habilidades e talentos (Vocação/Profissão).
+3.  **O que o mundo precisa**: Sua contribuição para o bem-estar da sociedade (Missão).
+4.  **O que você pode ser pago para fazer**: Sua fonte de renda ou profissão lucrativa (Profissão/Vocação).
+
+O objetivo é que o Mentor IA ajude o usuário a preencher esses campos através do chat e de dinâmicas guiadas.
 
 ## 🔑 AI Integration Details
 - **Model**: `llama-3.3-70b-versatile` (via Groq API).
