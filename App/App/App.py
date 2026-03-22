@@ -17,6 +17,13 @@ class State(rx.State):
     is_processing: bool = False
     sentiment: str = "Neutro"
     
+    # --- DYNAMIC THEMES ---
+    # Opções: "light", "low_dark", "hacker"
+    tema: str = "hacker" 
+
+    def set_tema(self, val): self.tema = val
+
+    
     # --- ONBOARDING STATE ---
     show_onboarding: bool = False
     onboarding_step: int = 1
@@ -34,6 +41,18 @@ class State(rx.State):
     # --- INSIGHTS STATE ---
     insight_input: str = ""
     last_insight: str = "Tudo começa com um pequeno passo..."
+    
+    # --- CIRCLE INTERACTION ---
+    selected_pilar: str = ""
+    pilar_content: str = ""
+
+    def select_pilar(self, pilar: str):
+        self.selected_pilar = pilar
+        if pilar == "PAIXÃO": self.pilar_content = self.onboarding_gosta or "Você ainda não definiu o que ama."
+        elif pilar == "TALENTO": self.pilar_content = self.onboarding_bom or "Você ainda não definiu no que é bom."
+        elif pilar == "MISSÃO": self.pilar_content = self.onboarding_precisa or "Você ainda não definiu o que o mundo precisa."
+        elif pilar == "RENDA": self.pilar_content = self.onboarding_pago or "Você ainda não definiu pelo que pode ser pago."
+        else: self.pilar_content = ""
 
     def set_insight_input(self, val: str): self.insight_input = val
 
@@ -66,22 +85,24 @@ class State(rx.State):
             return rx.toast.success("Insight guardado com carinho.")
 
     def on_load(self):
+        # Para o MVP, assumimos user_id = 1
+        self.show_onboarding = False 
+        
+        # Carrega perfil do SQLite
         perfil = banco_dados.buscar_dados_usuario(self.usuario_id)
         if perfil:
-            self.nome_usuario = perfil['nome']
-            self.onboarding_nome = perfil['nome']
-            if not perfil['gosta_fazer']:
-                self.show_onboarding = True
-            else:
-                self.show_onboarding = False
-        
-        # Carrega último insight
-        ins = banco_dados.buscar_insights_usuario(self.usuario_id, limite=1)
-        if ins: self.last_insight = ins[0][1]
+            self.nome_usuario = perfil["nome"]
+            self.onboarding_nome = perfil["nome"]
+            self.onboarding_gosta = perfil["gosta_fazer"]
+            self.onboarding_bom = perfil["bom_em"]
+            self.onboarding_precisa = perfil["mundo_precisa"]
+            self.onboarding_pago = perfil["pago_para"]
 
-        hist = banco_dados.visualizar_reflexoes_usuario(self.usuario_id, limite=10)
-        self.messages = [{"role": "user" if i%2==0 else "assistant", "content": h[2] if i%2==0 else h[3]} 
-                         for i, h in enumerate(reversed(hist or []))]
+        # Carrega último insight do SQLite
+        entries = banco_dados.buscar_insights_usuario(self.usuario_id, limite=1)
+        if entries:
+            self.last_insight = entries[0][1]
+
 
     async def handle_submit(self):
         if not self.user_input: return
@@ -99,7 +120,7 @@ class State(rx.State):
             return State.handle_submit
 
 def ikigai() -> rx.Component:
-    return rx.center(
+    return rx.vstack(
         rx.html("""
         <style>
             @keyframes pulse-soft {
@@ -107,59 +128,161 @@ def ikigai() -> rx.Component:
                 50% { transform: scale(1.02); opacity: 1; }
                 100% { transform: scale(1); opacity: 0.8; }
             }
-            .ikigai-circle { animation: pulse-soft 4s infinite ease-in-out; }
-            .circle-1 { animation-delay: 0s; }
-            .circle-2 { animation-delay: 1s; }
-            .circle-3 { animation-delay: 2s; }
-            .circle-4 { animation-delay: 3s; }
+            .ikigai-circle { animation: pulse-soft 4s infinite ease-in-out; cursor: pointer; transition: all 0.3s; }
+            .ikigai-circle:hover { filter: brightness(1.3); }
         </style>
-        <div style="position: relative; width: 300px; height: 300px; display: flex; align-items: center; justify-content: center;">
-            <div style="position: absolute; width: 220px; height: 220px; background: radial-gradient(circle, rgba(112,191,182,0.2) 0%, rgba(238,195,115,0.1) 100%); filter: blur(40px); border-radius: 50%;"></div>
-            
-            <svg width="280" height="280" viewBox="0 0 220 220" style="z-index: 1;">
-                <circle class="ikigai-circle circle-1" cx="110" cy="75" r="55" fill="rgba(112, 191, 182, 0.35)" stroke="#70BFB6" stroke-width="1.5"/>
-                <circle class="ikigai-circle circle-2" cx="110" cy="145" r="55" fill="rgba(151, 140, 185, 0.35)" stroke="#978CB9" stroke-width="1.5"/>
-                <circle class="ikigai-circle circle-3" cx="75" cy="110" r="55" fill="rgba(102, 182, 206, 0.35)" stroke="#66B6CE" stroke-width="1.5"/>
-                <circle class="ikigai-circle circle-4" cx="145" cy="110" r="55" fill="rgba(238, 195, 115, 0.35)" stroke="#EEC373" stroke-width="1.5"/>
-                
-                <text x="110" y="45" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
-                    <tspan x="110" dy="0">O QUE</tspan><tspan x="110" dy="9">VOCÊ AMA</tspan>
-                </text>
-                <text x="110" y="178" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
-                    <tspan x="110" dy="0">SER PAGO</tspan><tspan x="110" dy="9">POR ISSO</tspan>
-                </text>
-                <text x="50" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
-                    <tspan x="50" dy="0">NO QUE</tspan><tspan x="50" dy="9">É BOM</tspan>
-                </text>
-                <text x="175" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
-                    <tspan x="175" dy="0">O MUNDO</tspan><tspan x="175" dy="9">PRECISA</tspan>
-                </text>
-                
-                <circle cx="110" cy="110" r="26" fill="white" filter="drop-shadow(0 4px 10px rgba(0,0,0,0.15))"/>
-                <text x="110" y="114" text-anchor="middle" font-size="10" font-weight="800" fill="#1A202C" font-family="sans-serif">Ikigai</text>
-            </svg>
-        </div>
         """),
-        padding_y="1.5em"
+        rx.center(
+            rx.cond(
+                State.tema == "hacker",
+                rx.box(
+                    rx.el.svg(
+                        rx.el.defs(
+                            rx.el.radial_gradient(
+                                rx.el.stop(offset="0%", stop_color="rgba(0,255,65,0.1)"),
+                                rx.el.stop(offset="70%", stop_color="transparent"),
+                                id="glow-hacker"
+                            )
+                        ),
+                        rx.el.circle(cx="110", cy="110", r="110", fill="url(#glow-hacker)", filter="blur(40px)"),
+                        # PAIXÃO
+                        rx.el.circle(
+                            cx="110", cy="75", r="55", fill="rgba(0, 255, 65, 0.1)", stroke="#00FF41", stroke_width="1.5",
+                            class_name="ikigai-circle circle-1", on_click=State.select_pilar("PAIXÃO")
+                        ),
+                        # RENDA
+                        rx.el.circle(
+                            cx="110", cy="145", r="55", fill="rgba(0, 255, 65, 0.05)", stroke="#00FF41", stroke_width="1.5", stroke_dasharray="2 2",
+                            class_name="ikigai-circle circle-2", on_click=State.select_pilar("RENDA")
+                        ),
+                        # TALENTO
+                        rx.el.circle(
+                            cx="75", cy="110", r="55", fill="rgba(0, 255, 65, 0.1)", stroke="#00FF41", stroke_width="1.5",
+                            class_name="ikigai-circle circle-3", on_click=State.select_pilar("TALENTO")
+                        ),
+                        # MISSÃO
+                        rx.el.circle(
+                            cx="145", cy="110", r="55", fill="rgba(0, 255, 65, 0.05)", stroke="#00FF41", stroke_width="1.5", stroke_dasharray="2 2",
+                            class_name="ikigai-circle circle-4", on_click=State.select_pilar("MISSÃO")
+                        ),
+                        rx.el.circle(cx="110", cy="110", r="26", fill="black", stroke="#00FF41", stroke_width="2"),
+                        rx.el.text("VAULT", x="110", y="114", text_anchor="middle", font_size="9", font_weight="800", fill="#00FF41", font_family="monospace"),
+                        rx.el.text("PAIXÃO", x="110", y="45", text_anchor="middle", font_size="7", fill="#00FF41", font_family="monospace"),
+                        rx.el.text("RENDA", x="110", y="178", text_anchor="middle", font_size="7", fill="#00FF41", font_family="monospace"),
+                        rx.el.text("TALENTO", x="50", y="112", text_anchor="middle", font_size="7", fill="#00FF41", font_family="monospace"),
+                        rx.el.text("MISSÃO", x="175", y="112", text_anchor="middle", font_size="7", fill="#00FF41", font_family="monospace"),
+                        width="280", height="280", view_box="0 0 220 220"
+                    ),
+                    position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
+                ),
+                rx.cond(
+                    State.tema == "low_dark",
+                    rx.box(
+                        rx.el.svg(
+                            rx.el.circle(
+                                cx="110", cy="75", r="58", fill="rgba(63, 81, 181, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                                class_name="ikigai-circle circle-1", on_click=State.select_pilar("PAIXÃO")
+                            ),
+                            rx.el.circle(
+                                cx="110", cy="145", r="58", fill="rgba(92, 107, 192, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                                class_name="ikigai-circle circle-2", on_click=State.select_pilar("RENDA")
+                            ),
+                            rx.el.circle(
+                                cx="75", cy="110", r="58", fill="rgba(63, 81, 181, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                                class_name="ikigai-circle circle-3", on_click=State.select_pilar("TALENTO")
+                            ),
+                            rx.el.circle(
+                                cx="145", cy="110", r="58", fill="rgba(92, 107, 192, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                                class_name="ikigai-circle circle-4", on_click=State.select_pilar("MISSÃO")
+                            ),
+                            rx.el.circle(cx="110", cy="110", r="30", fill="#1A1B26", stroke="#5C6BC0", stroke_width="2"),
+                            rx.el.text("IKIGAI", x="110", y="114", text_anchor="middle", font_size="10", font_weight="800", fill="#A9B1D6"),
+                            rx.el.text("PAIXÃO", x="110", y="45", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                            rx.el.text("RENDA", x="110", y="178", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                            rx.el.text("TALENTO", x="50", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                            rx.el.text("MISSÃO", x="175", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                            width="280", height="280", view_box="0 0 220 220"
+                        ),
+                        position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
+                    ),
+                    # Light Mode
+                    rx.box(
+                        rx.el.svg(
+                            rx.el.circle(
+                                cx="110", cy="75", r="58", fill="rgba(112, 191, 182, 0.2)", stroke="#70BFB6",
+                                class_name="ikigai-circle circle-1", on_click=State.select_pilar("PAIXÃO")
+                            ),
+                            rx.el.circle(
+                                cx="110", cy="145", r="58", fill="rgba(151, 140, 185, 0.2)", stroke="#978CB9",
+                                class_name="ikigai-circle circle-2", on_click=State.select_pilar("RENDA")
+                            ),
+                            rx.el.circle(
+                                cx="75", cy="110", r="58", fill="rgba(102, 182, 206, 0.2)", stroke="#66B6CE",
+                                class_name="ikigai-circle circle-3", on_click=State.select_pilar("TALENTO")
+                            ),
+                            rx.el.circle(
+                                cx="145", cy="110", r="58", fill="rgba(238, 195, 115, 0.2)", stroke="#EEC373",
+                                class_name="ikigai-circle circle-4", on_click=State.select_pilar("MISSÃO")
+                            ),
+                            rx.el.circle(cx="110", cy="110", r="28", fill="white", stroke="#E2E8F0"),
+                            rx.el.text("IKIGAI", x="110", y="114", text_anchor="middle", font_size="10", font_weight="800", fill="#2D3748"),
+                            rx.el.text("PAIXÃO", x="110", y="42", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                            rx.el.text("RENDA", x="110", y="181", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                            rx.el.text("TALENTO", x="50", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                            rx.el.text("MISSÃO", x="175", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                            width="280", height="280", view_box="0 0 220 220"
+                        ),
+                        position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
+                    )
+                )
+            ),
+            padding_y="1.5em"
+        ),
+        # Display Area para o Pilar Selecionado
+        rx.cond(
+            State.selected_pilar != "",
+            rx.vstack(
+                rx.heading(f"Pilar: {State.selected_pilar}", size="4", color=rx.cond(State.tema=="hacker", "#00FF41", "inherit")),
+                rx.text(State.pilar_content, size="2", italic=True, text_align="center"),
+                rx.button("Fechar", on_click=State.select_pilar(""), variant="soft", size="1"),
+                padding="1.5em",
+                bg=rx.cond(State.tema=="hacker", "rgba(0,255,65,0.05)", "rgba(0,0,0,0.03)"),
+                border_radius="xl",
+                border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "1px solid rgba(0,0,0,0.1)"),
+                width="100%",
+                max_width="400px",
+                margin_x="auto",
+                align_items="center",
+                margin_top="-2em",
+                margin_bottom="1.5em",
+            )
+        )
     )
 
 def navbar() -> rx.Component:
     return rx.hstack(
         rx.hstack(
-            rx.icon(tag="leaf", color="#70BFB6", size=24),
-            rx.heading("Espaço Você", size="6", weight="bold"),
+            rx.icon(tag="shield-check", color=rx.cond(State.tema=="hacker", "#00FF41", "#5C6BC0"), size=24),
+            rx.heading("ANTIGRAVITY", size="5", weight="bold", color=rx.cond(State.tema=="hacker", "#00FF41", "#5C6BC0"), font_family="monospace"),
             spacing="3",
         ),
         rx.spacer(),
-        rx.color_mode.button(size="3", variant="soft", radius="full"),
+        rx.segmented_control.root(
+            rx.segmented_control.item("Hacker", value="hacker"),
+            rx.segmented_control.item("Low Dark", value="low_dark"),
+            rx.segmented_control.item("Light", value="light"),
+            on_change=State.set_tema,
+            value=State.tema,
+            variant="classic",
+            radius="large",
+        ),
         width="100%",
         padding="1.5em",
-        position="sticky",
-        top="0",
-        z_index="10",
-        backdrop_filter="blur(10px)",
-        bg="rgba(255,255,255,0.5)",
+        bg=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1A1A", "#F7FAFC")),
+        border_bottom=rx.cond(State.tema=="hacker", "1px solid #00FF41", "none"),
     )
+
+
 
 def trail_item(title: str, is_active: bool = False, is_locked: bool = True) -> rx.Component:
     return rx.vstack(
@@ -198,12 +321,13 @@ def meditation_trail() -> rx.Component:
             padding_x="1em",
             justify="center",
         ),
-        bg="rgba(255,255,255,0.4)",
+        bg=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1B26", "rgba(255,255,255,0.4)")),
         padding="2em",
-        border_radius="3xl",
+        border_radius="15px",
         width="100%",
-        border="1px solid rgba(255,255,255,0.5)",
+        border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "1px solid rgba(0,0,0,0.1)"),
     )
+
 
 def card_custom(title: str, content: rx.Component, icon: str = "", footer: rx.Component = rx.box()) -> rx.Component:
     return rx.vstack(
@@ -215,15 +339,16 @@ def card_custom(title: str, content: rx.Component, icon: str = "", footer: rx.Co
         ),
         content,
         footer,
-        bg=rx.color_mode_cond("rgba(255,255,255,0.7)", "rgba(30,30,40,0.7)"),
-        backdrop_filter="blur(15px)",
+        bg=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1B26", "white")),
         padding="1.5em",
-        border_radius="30px",
-        box_shadow="0 8px 32px rgba(0,0,0,0.05)",
-        border="1px solid rgba(255,255,255,0.2)",
+        border_radius="15px",
+        box_shadow=rx.cond(State.tema=="hacker", "0 0 20px rgba(0,255,65,0.1)", "0 8px 32px rgba(0,0,0,0.05)"),
+        border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "1px solid rgba(0,0,0,0.1)"),
         width="100%",
         align_items="start",
     )
+
+
 
 def onboarding_view() -> rx.Component:
     return rx.center(
@@ -309,14 +434,13 @@ def onboarding_view() -> rx.Component:
             padding="3em",
             border_radius="3xl",
             box_shadow="0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-            width="100%",
-            max_width="450px",
-            spacing="6",
+            background="black",
         ),
         width="100%",
         height="100vh",
-        background="linear-gradient(160deg, #D8E5D8 0%, #FDFCFB 100%)",
+        background="black",
     )
+
 
 def index() -> rx.Component:
     return rx.box(
@@ -426,9 +550,12 @@ def index() -> rx.Component:
                 ),
             )
         ),
-        min_height="100vh",
+        background=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1B26", "#F0F2F5")),
+        color=rx.cond(State.tema=="hacker", "#00FF41", rx.cond(State.tema=="low_dark", "#A9B1D6", "#333")),
         on_mount=State.on_load
     )
+
+
 
 # --- CHAT PAGE ---
 def chat_page() -> rx.Component:
@@ -439,14 +566,14 @@ def chat_page() -> rx.Component:
             left="0",
             width="100%",
             height="100%",
-            background="linear-gradient(160deg, #FDFCFB 0%, #D8E5D8 100%)",
+            background=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#0F172A", "linear-gradient(160deg, #FDFCFB 0%, #D8E5D8 100%)")),
             z_index="-1",
         ),
         rx.container(
             rx.vstack(
                 rx.hstack(
-                    rx.button(rx.icon(tag="arrow-left"), on_click=lambda: rx.redirect("/"), variant="ghost"),
-                    rx.heading("Mentor IA", size="6", weight="bold"),
+                    rx.button(rx.icon(tag="arrow-left"), on_click=lambda: rx.redirect("/"), variant="ghost", color=rx.cond(State.tema=="hacker", "#00FF41", "inherit")),
+                    rx.heading("Mentor IA", size="6", weight="bold", color=rx.cond(State.tema=="hacker", "#00FF41", "inherit")),
                     justify="start",
                     width="100%",
                     padding_y="1em",
@@ -456,10 +583,15 @@ def chat_page() -> rx.Component:
                         rx.flex(
                             rx.box(
                                 rx.markdown(m["content"]),
-                                bg=rx.cond(m["role"]=="user", "#E2E8F0", "white"),
-                                color="#1A202C",
+                                bg=rx.cond(
+                                    m["role"]=="user", 
+                                    rx.cond(State.tema=="hacker", "#003B00", "#E2E8F0"), 
+                                    rx.cond(State.tema=="hacker", "#001100", "white")
+                                ),
+                                color=rx.cond(State.tema=="hacker", "#00FF41", "#1A202C"),
                                 padding="1.2em",
-                                border_radius="2xl",
+                                border_radius="15px",
+                                border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "none"),
                                 max_width="90%",
                                 box_shadow="sm",
                             ),
@@ -483,7 +615,9 @@ def chat_page() -> rx.Component:
                         on_change=State.set_user_input,
                         width="100%",
                         radius="full",
-                        bg="white",
+                        bg=rx.cond(State.tema=="hacker", "black", "white"),
+                        color=rx.cond(State.tema=="hacker", "#00FF41", "inherit"),
+                        border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "none"),
                         on_key_down=State.handle_submit_enter,
                     ),
                     rx.button(
@@ -501,7 +635,7 @@ def chat_page() -> rx.Component:
             bottom="0",
             width="100%",
             padding="2em",
-            bg="rgba(255,255,255,0.8)",
+            bg=rx.cond(State.tema=="hacker", "rgba(0,0,0,0.9)", rx.cond(State.tema=="low_dark", "rgba(15,23,42,0.9)", "rgba(255,255,255,0.8)")),
             backdrop_filter="blur(10px)",
         )
     )

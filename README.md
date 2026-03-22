@@ -110,34 +110,24 @@ A tabela `insights_diario` armazena as reflexões curtas do dashboard para conte
 
 ---
 
-## 🏁 O que foi feito hoje (22/03)
-
-- **Diário de Insights 2.0**: Implementado o campo de reflexão no dashboard que salva no banco de dados e serve de contexto para a IA.
-- **Mentor IA Contextual**: A IA agora "aprende" sobre você lendo suas respostas do Onboarding e seus últimos insights do diário.
-- **Dark Mode Nativo**: Integramos o `rx.color_mode` para uma experiência confortável em qualquer horário.
-- **Design de Alto Contraste**: Círculos de Ikigai com cores suaves e animações CSS `pulse-soft`.
-- **Navegação Dinâmica**: Separação clara entre a tela de introspecção (Home) e a tela de diálogo (Chat).
+## 🏁 Realizado Hoje (22/03): **Vault UI & Interaction Focus**
+- [x] **UX Grim-Zen (Fase 5)**: Design estilo "Vault Hacker" com 3 temas dinâmicos (Hacker, Low Dark, Light).
+- [x] **Ciclos de Ikigai Interativos**: Círculos agora são clicáveis e exibem dados do perfil do usuário.
+- [x] **Estabilidade SQLite**: Reversão estratégica de PostgreSQL para SQLite para garantir performance em hardware com 4GB RAM.
+- [x] **Mentor IA Funcional**: Integração Groq/Llama-3.3 restaurada com histórico persistente no SQLite.
 
 ---
 
 ## 🛠️ Próximos Passos (Backlog)
-
-### 🧩 Funcionalidades
-- [ ] **Propósito Dinâmico**: Fazer com que o card "Propósito Sugerido" seja gerado pela IA todas as manhãs com base no humor do usuário.
-- [ ] **Jornada de Meditação**: Transformar a trilha visual em sessões reais de áudio ou texto guiado.
-- [ ] **Histórico de Insights**: Criar uma página para visualizar e buscar todos os insights salvos anteriormente.
-
-### 🔐 Segurança & Infra
-- [ ] **Autenticação**: Sistema de Login/Senha para múltiplos usuários.
-- [ ] **Sanitização de Dados**: Proteção contra injeções de prompt no chat.
-- [ ] **Deploy**: Configuração para rodar em servidor (Dockerize).
-
+- [ ] **Fase 4: Inteligência Local (Ollama)**: Finalizar o serviço `ia_service_pg.py` para análise comportamental sem nuvem.
+- [ ] **Gráficos de Foco vs Descanso**: Integrar os últimos 7 dias de métricas em um dashboard visual.
+- [ ] **Módulo de Hábitos**: Sistema de metas inteligentes sugeridas pela IA.
 
 ---
 
 ## 📄 Licença
-
 Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para detalhes.
 
 ---
-*Desenvolvido com carinho para o equilíbrio pessoal. 🌸*
+**ANTIGRAVITY // Espaço Você** - Seu refúgio digital de alta performance. 🌿✨
+
