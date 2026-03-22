@@ -106,5 +106,61 @@ def visualizador_reflexoes_terminal():
     except Exception as e:
         print(f"❌ Erro ao gerar visualização: {e}")
 
+def criar_tabela_insights():
+    """Cria a tabela de insights se não existir."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS insights_diario (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER,
+                data DATETIME,
+                texto TEXT,
+                FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Erro ao criar tabela de insights: {e}")
+
+def adicionar_insight(usuario_id, texto):
+    """Salva um novo insight no diário de insights."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO insights_diario (usuario_id, data, texto)
+            VALUES (?, datetime('now', 'localtime'), ?)
+        """, (usuario_id, texto))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao salvar insight: {e}")
+        return False
+
+def buscar_insights_usuario(usuario_id, limite=5):
+    """Busca os últimos insights salvos pelo usuário."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT data, texto 
+            FROM insights_diario 
+            WHERE usuario_id = ? 
+            ORDER BY id DESC LIMIT ?
+        """, (usuario_id, limite))
+        dados = cursor.fetchall()
+        conn.close()
+        return dados
+    except Exception as e:
+        print(f"❌ Erro ao buscar insights: {e}")
+        return []
+
+# Executa a criação da tabela na importação
+criar_tabela_insights()
+
 if __name__ == "__main__":
     visualizador_reflexoes_terminal()

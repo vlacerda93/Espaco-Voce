@@ -30,6 +30,12 @@ class State(rx.State):
         {"e": "😊", "l": "Feliz"}, {"e": "😔", "l": "Triste"},
         {"e": "😤", "l": "Ansioso"}, {"e": "🤔", "l": "Reflexivo"}
     ]
+    
+    # --- INSIGHTS STATE ---
+    insight_input: str = ""
+    last_insight: str = "Tudo começa com um pequeno passo..."
+
+    def set_insight_input(self, val: str): self.insight_input = val
 
     def set_user_input(self, val: str): self.user_input = val
     def set_sentiment(self, val: str): self.sentiment = val
@@ -41,21 +47,6 @@ class State(rx.State):
     
     def set_onboarding_step(self, step: int): self.onboarding_step = step
 
-    def on_load(self):
-        perfil = banco_dados.buscar_dados_usuario(self.usuario_id)
-        if perfil:
-            self.nome_usuario = perfil['nome']
-            self.onboarding_nome = perfil['nome']
-            # Se não tiver preenchido o Ikigai, mostra onboarding
-            if not perfil['gosta_fazer']:
-                self.show_onboarding = True
-            else:
-                self.show_onboarding = False
-        
-        hist = banco_dados.visualizar_reflexoes_usuario(self.usuario_id, limite=10)
-        self.messages = [{"role": "user" if i%2==0 else "assistant", "content": h[2] if i%2==0 else h[3]} 
-                         for i, h in enumerate(reversed(hist or []))]
-
     def finish_onboarding(self):
         success = banco_dados.atualizar_perfil_ikigai(
             self.usuario_id, self.onboarding_nome, self.onboarding_gosta,
@@ -65,6 +56,32 @@ class State(rx.State):
             self.nome_usuario = self.onboarding_nome
             self.show_onboarding = False
             return rx.toast.info("Perfil Ikigai atualizado! Bem-vindo.", position="top-center")
+
+    def save_insight(self):
+        if not self.insight_input: return
+        success = banco_dados.adicionar_insight(self.usuario_id, self.insight_input)
+        if success:
+            self.last_insight = self.insight_input
+            self.insight_input = ""
+            return rx.toast.success("Insight guardado com carinho.")
+
+    def on_load(self):
+        perfil = banco_dados.buscar_dados_usuario(self.usuario_id)
+        if perfil:
+            self.nome_usuario = perfil['nome']
+            self.onboarding_nome = perfil['nome']
+            if not perfil['gosta_fazer']:
+                self.show_onboarding = True
+            else:
+                self.show_onboarding = False
+        
+        # Carrega último insight
+        ins = banco_dados.buscar_insights_usuario(self.usuario_id, limite=1)
+        if ins: self.last_insight = ins[0][1]
+
+        hist = banco_dados.visualizar_reflexoes_usuario(self.usuario_id, limite=10)
+        self.messages = [{"role": "user" if i%2==0 else "assistant", "content": h[2] if i%2==0 else h[3]} 
+                         for i, h in enumerate(reversed(hist or []))]
 
     async def handle_submit(self):
         if not self.user_input: return
@@ -84,66 +101,126 @@ class State(rx.State):
 def ikigai() -> rx.Component:
     return rx.center(
         rx.html("""
-        <div style="position: relative; width: 280px; height: 280px; display: flex; align-items: center; justify-content: center;">
-            <!-- Glow background -->
-            <div style="position: absolute; width: 200px; height: 200px; background: radial-gradient(circle, rgba(112,191,182,0.2) 0%, rgba(238,195,115,0.1) 100%); filter: blur(35px); border-radius: 50%;"></div>
+        <style>
+            @keyframes pulse-soft {
+                0% { transform: scale(1); opacity: 0.8; }
+                50% { transform: scale(1.02); opacity: 1; }
+                100% { transform: scale(1); opacity: 0.8; }
+            }
+            .ikigai-circle { animation: pulse-soft 4s infinite ease-in-out; }
+            .circle-1 { animation-delay: 0s; }
+            .circle-2 { animation-delay: 1s; }
+            .circle-3 { animation-delay: 2s; }
+            .circle-4 { animation-delay: 3s; }
+        </style>
+        <div style="position: relative; width: 300px; height: 300px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 220px; height: 220px; background: radial-gradient(circle, rgba(112,191,182,0.2) 0%, rgba(238,195,115,0.1) 100%); filter: blur(40px); border-radius: 50%;"></div>
             
-            <svg width="250" height="250" viewBox="0 0 220 220" style="z-index: 1;">
-                <!-- Círculos com cores suaves e bordas finas -->
-                <circle cx="110" cy="75" r="55" fill="rgba(112, 191, 182, 0.35)" stroke="#70BFB6" stroke-width="1"/>
-                <circle cx="110" cy="145" r="55" fill="rgba(151, 140, 185, 0.35)" stroke="#978CB9" stroke-width="1"/>
-                <circle cx="75" cy="110" r="55" fill="rgba(102, 182, 206, 0.35)" stroke="#66B6CE" stroke-width="1"/>
-                <circle cx="145" cy="110" r="55" fill="rgba(238, 195, 115, 0.35)" stroke="#EEC373" stroke-width="1"/>
+            <svg width="280" height="280" viewBox="0 0 220 220" style="z-index: 1;">
+                <circle class="ikigai-circle circle-1" cx="110" cy="75" r="55" fill="rgba(112, 191, 182, 0.35)" stroke="#70BFB6" stroke-width="1.5"/>
+                <circle class="ikigai-circle circle-2" cx="110" cy="145" r="55" fill="rgba(151, 140, 185, 0.35)" stroke="#978CB9" stroke-width="1.5"/>
+                <circle class="ikigai-circle circle-3" cx="75" cy="110" r="55" fill="rgba(102, 182, 206, 0.35)" stroke="#66B6CE" stroke-width="1.5"/>
+                <circle class="ikigai-circle circle-4" cx="145" cy="110" r="55" fill="rgba(238, 195, 115, 0.35)" stroke="#EEC373" stroke-width="1.5"/>
                 
-                <!-- Textos por Quadrante com tspan para multi-linha -->
-                <!-- Topo: O que você ama -->
-                <text x="110" y="45" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
-                    <tspan x="110" dy="0">O QUE</tspan>
-                    <tspan x="110" dy="9">VOCÊ AMA</tspan>
+                <text x="110" y="45" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
+                    <tspan x="110" dy="0">O QUE</tspan><tspan x="110" dy="9">VOCÊ AMA</tspan>
+                </text>
+                <text x="110" y="178" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
+                    <tspan x="110" dy="0">SER PAGO</tspan><tspan x="110" dy="9">POR ISSO</tspan>
+                </text>
+                <text x="50" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
+                    <tspan x="50" dy="0">NO QUE</tspan><tspan x="50" dy="9">É BOM</tspan>
+                </text>
+                <text x="175" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="currentColor" font-family="sans-serif">
+                    <tspan x="175" dy="0">O MUNDO</tspan><tspan x="175" dy="9">PRECISA</tspan>
                 </text>
                 
-                <!-- Baixo: Pelo que pode ser pago -->
-                <text x="110" y="178" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
-                    <tspan x="110" dy="0">SER PAGO</tspan>
-                    <tspan x="110" dy="9">POR ISSO</tspan>
-                </text>
-                
-                <!-- Esquerda: No que é bom -->
-                <text x="50" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
-                    <tspan x="50" dy="0">NO QUE</tspan>
-                    <tspan x="50" dy="9">É BOM</tspan>
-                </text>
-                
-                <!-- Direita: O que o mundo precisa -->
-                <text x="175" y="112" text-anchor="middle" font-size="7" font-weight="700" fill="#2D3748" font-family="sans-serif">
-                    <tspan x="175" dy="0">O MUNDO</tspan>
-                    <tspan x="175" dy="9">PRECISA</tspan>
-                </text>
-                
-                <!-- Bolha Central "Ikigai" -->
-                <circle cx="110" cy="110" r="24" fill="white" filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))"/>
-                <text x="110" y="113" text-anchor="middle" font-size="10" font-weight="800" fill="#1A202C" font-family="sans-serif">Ikigai</text>
+                <circle cx="110" cy="110" r="26" fill="white" filter="drop-shadow(0 4px 10px rgba(0,0,0,0.15))"/>
+                <text x="110" y="114" text-anchor="middle" font-size="10" font-weight="800" fill="#1A202C" font-family="sans-serif">Ikigai</text>
             </svg>
         </div>
         """),
-        padding_y="1em"
+        padding_y="1.5em"
     )
 
-def card_custom(title: str, content: rx.Component, icon: str = "") -> rx.Component:
+def navbar() -> rx.Component:
+    return rx.hstack(
+        rx.hstack(
+            rx.icon(tag="leaf", color="#70BFB6", size=24),
+            rx.heading("Espaço Você", size="6", weight="bold"),
+            spacing="3",
+        ),
+        rx.spacer(),
+        rx.color_mode.button(size="3", variant="soft", radius="full"),
+        width="100%",
+        padding="1.5em",
+        position="sticky",
+        top="0",
+        z_index="10",
+        backdrop_filter="blur(10px)",
+        bg="rgba(255,255,255,0.5)",
+    )
+
+def trail_item(title: str, is_active: bool = False, is_locked: bool = True) -> rx.Component:
+    return rx.vstack(
+        rx.box(
+            rx.center(
+                rx.icon(tag="lock" if is_locked else ("play" if is_active else "check"), size=15),
+                width="100%", height="100%"
+            ),
+            width="45px",
+            height="45px",
+            border_radius="full",
+            bg=rx.cond(is_locked, "#EDF2F7", rx.cond(is_active, "#70BFB6", "#A0AEC0")),
+            color="white",
+            box_shadow="lg" if is_active else "none",
+            border=rx.cond(is_active, "2px solid white", "none"),
+        ),
+        rx.text(title, size="1", weight="medium", width="60px", text_align="center", color="#718096"),
+        spacing="2",
+        align_items="center",
+    )
+
+def meditation_trail() -> rx.Component:
+    return rx.vstack(
+        rx.text("Sua Jornada Espaço Você", size="4", weight="bold", padding_bottom="1em"),
+        rx.hstack(
+            trail_item("Calma Matinal", is_active=True, is_locked=False),
+            rx.box(width="30px", height="2px", bg="#E2E8F0", margin_top="-20px"),
+            trail_item("Foco Profundo"),
+            rx.box(width="30px", height="2px", bg="#EDF2F7", margin_top="-20px"),
+            trail_item("Sono Zen"),
+            rx.box(width="30px", height="2px", bg="#EDF2F7", margin_top="-20px"),
+            trail_item("Ikigai Pleno"),
+            spacing="0",
+            overflow_x="auto",
+            width="100%",
+            padding_x="1em",
+            justify="center",
+        ),
+        bg="rgba(255,255,255,0.4)",
+        padding="2em",
+        border_radius="3xl",
+        width="100%",
+        border="1px solid rgba(255,255,255,0.5)",
+    )
+
+def card_custom(title: str, content: rx.Component, icon: str = "", footer: rx.Component = rx.box()) -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.icon(tag=icon, size=18) if icon else rx.box(),
-            rx.text(title, size="4", weight="bold", color="#1A202C"),
+            rx.text(title, size="4", weight="bold"),
             spacing="2",
             padding_bottom="0.5em",
         ),
         content,
-        bg="rgba(249, 249, 244, 0.8)",
-        backdrop_filter="blur(10px)",
+        footer,
+        bg=rx.color_mode_cond("rgba(255,255,255,0.7)", "rgba(30,30,40,0.7)"),
+        backdrop_filter="blur(15px)",
         padding="1.5em",
-        border_radius="25px",
-        box_shadow="0 4px 20px rgba(0,0,0,0.03)",
-        border="1px solid rgba(255,255,255,0.6)",
+        border_radius="30px",
+        box_shadow="0 8px 32px rgba(0,0,0,0.05)",
+        border="1px solid rgba(255,255,255,0.2)",
         width="100%",
         align_items="start",
     )
@@ -159,7 +236,7 @@ def onboarding_view() -> rx.Component:
                 State.onboarding_step == 1,
                 rx.vstack(
                     rx.input(value=State.onboarding_nome, on_change=State.set_onboarding_nome, placeholder="Seu nome...", size="3", width="100%", radius="large"),
-                    rx.button("Próximo", on_click=State.set_onboarding_step(2), width="100%", color_scheme="grass", size="3"),
+                    rx.button("Próximo", on_click=lambda: State.set_onboarding_step(2), width="100%", color_scheme="grass", size="3"),
                     spacing="4", width="100%"
                 )
             ),
@@ -172,8 +249,8 @@ def onboarding_view() -> rx.Component:
                     rx.text("Suas paixões, hobbies e interesses.", size="2", opacity=0.8),
                     rx.text_area(value=State.onboarding_gosta, on_change=State.set_onboarding_gosta, placeholder="Eu amo...", size="3", width="100%", height="120px"),
                     rx.hstack(
-                        rx.button("Voltar", on_click=State.set_onboarding_step(1), variant="soft"),
-                        rx.button("Próximo", on_click=State.set_onboarding_step(3), color_scheme="grass", flex="1"),
+                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(1), variant="soft"),
+                        rx.button("Próximo", on_click=lambda: State.set_onboarding_step(3), color_scheme="grass", flex="1"),
                         width="100%"
                     ),
                     spacing="4", width="100%"
@@ -188,8 +265,8 @@ def onboarding_view() -> rx.Component:
                     rx.text("Suas habilidades, talentos e competências.", size="2", opacity=0.8),
                     rx.text_area(value=State.onboarding_bom, on_change=State.set_onboarding_bom, placeholder="Eu sou bom em...", size="3", width="100%", height="120px"),
                     rx.hstack(
-                        rx.button("Voltar", on_click=State.set_onboarding_step(2), variant="soft"),
-                        rx.button("Próximo", on_click=State.set_onboarding_step(4), color_scheme="grass", flex="1"),
+                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(2), variant="soft"),
+                        rx.button("Próximo", on_click=lambda: State.set_onboarding_step(4), color_scheme="grass", flex="1"),
                         width="100%"
                     ),
                     spacing="4", width="100%"
@@ -204,8 +281,8 @@ def onboarding_view() -> rx.Component:
                     rx.text("Sua contribuição para o bem-estar da sociedade.", size="2", opacity=0.8),
                     rx.text_area(value=State.onboarding_precisa, on_change=State.set_onboarding_precisa, placeholder="O mundo precisa de...", size="3", width="100%", height="120px"),
                     rx.hstack(
-                        rx.button("Voltar", on_click=State.set_onboarding_step(3), variant="soft"),
-                        rx.button("Próximo", on_click=State.set_onboarding_step(5), color_scheme="grass", flex="1"),
+                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(3), variant="soft"),
+                        rx.button("Próximo", on_click=lambda: State.set_onboarding_step(5), color_scheme="grass", flex="1"),
                         width="100%"
                     ),
                     spacing="4", width="100%"
@@ -220,7 +297,7 @@ def onboarding_view() -> rx.Component:
                     rx.text("Sua profissão, trabalho ou fontes de renda estimadas.", size="2", opacity=0.8),
                     rx.text_area(value=State.onboarding_pago, on_change=State.set_onboarding_pago, placeholder="Eu posso ser pago por...", size="3", width="100%", height="120px"),
                     rx.hstack(
-                        rx.button("Voltar", on_click=State.set_onboarding_step(4), variant="soft"),
+                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(4), variant="soft"),
                         rx.button("Finalizar", on_click=State.finish_onboarding, color_scheme="grass", flex="1"),
                         width="100%"
                     ),
@@ -247,24 +324,24 @@ def index() -> rx.Component:
             State.show_onboarding,
             onboarding_view(),
             rx.box(
-                # --- BACKGROUND GRADIENT (Refined Glow) ---
+                # --- BACKGROUND ---
                 rx.box(
-                    position="fixed",
-                    top="0",
-                    left="0",
-                    width="100%",
-                    height="100%",
-                    background="radial-gradient(circle at 80% 10%, rgba(238,195,115,0.1) 0%, transparent 40%), radial-gradient(circle at 10% 80%, rgba(112,191,182,0.1) 0%, transparent 40%), #FFFFFF",
+                    position="fixed", top="0", left="0", width="100%", height="100%",
+                    background=rx.color_mode_cond(
+                        "radial-gradient(circle at 80% 10%, rgba(238,195,115,0.15), transparent 50%), radial-gradient(circle at 10% 80%, rgba(112,191,182,0.15), transparent 50%), #F7FAFC",
+                        "radial-gradient(circle at 20% 20%, rgba(112,191,182,0.1), transparent 50%), #0F172A"
+                    ),
                     z_index="-1",
                 ),
+                navbar(),
                 rx.container(
                     rx.vstack(
-                        # --- HEADER (Reference Match) ---
+                        # --- HEADER ---
                         rx.vstack(
-                            rx.text("Bem-vindo ao Ikigai", size="2", weight="medium", color="#718096", opacity=0.8),
-                            rx.heading("Sua Jornada para o Ikigai", size="8", weight="bold", color="#1A202C"),
+                            rx.text("Bem-vindo de volta", size="2", weight="medium", color="#718096", opacity=0.8),
+                            rx.heading(f"Olá, {State.nome_usuario}", size="8", weight="bold"),
                             align_items="center",
-                            padding_top="2em",
+                            padding_top="1em",
                         ),
                         
                         # --- IKIGAI DIAGRAM ---
@@ -272,55 +349,47 @@ def index() -> rx.Component:
                         
                         # --- DASHBOARD GRID ---
                         rx.flex(
-                            # Lado Esquerdo: Biblioteca
+                            # Lado Esquerdo: Trilhas
                             rx.box(
                                 card_custom(
-                                    "Biblioteca de Sessões",
-                                    rx.vstack(
-                                        rx.text("Caminhos para o Equilíbrio", size="3", color="#4A5568", weight="medium"),
-                                        rx.box(
-                                            rx.hstack(rx.icon(tag="users", size=14), rx.text("Exploração do 'O que você ama'", size="2"), spacing="2"),
-                                            rx.hstack(rx.icon(tag="trophy", size=14), rx.text("Desenvolvimento de Talentos", size="2"), spacing="2"),
-                                            rx.hstack(rx.icon(tag="globe", size=14), rx.text("Ação no Mundo", size="2"), spacing="2"),
-                                            rx.hstack(rx.icon(tag="banknote", size=14), rx.text("Pelo que você pode ser pago", size="2"), spacing="2"),
-                                            spacing="2",
-                                            padding_top="0.5em",
-                                            color="#718096"
-                                        ),
-                                        spacing="3",
-                                        align_items="start",
-                                    ),
-                                    icon="users"
+                                    "Sua Jornada até aqui",
+                                    meditation_trail(),
+                                    icon="map"
                                 ),
                                 width=["100%", "100%", "58%"],
                             ),
-                            # Lado Direito: Insights e Toggle
+                            # Lado Direito: Insights
                             rx.vstack(
                                 card_custom(
                                     "Diário de Insights",
-                                    rx.text("Suas últimas reflexões estão guardadas aqui.", size="2", color="#718096"),
-                                    icon="notebook-pen"
-                                ),
-                                rx.box(
-                                    rx.hstack(
-                                        rx.icon(tag="sun", size=16),
-                                        rx.hstack(
-                                            rx.text("MODO: CLARO | ESCURO", size="1", weight="bold", color="#718096"),
-                                            rx.switch(color_scheme="gray", size="1"),
-                                            spacing="2",
+                                    rx.vstack(
+                                        rx.text_area(
+                                            value=State.insight_input,
+                                            on_change=State.set_insight_input,
+                                            placeholder="O que você descobriu hoje?",
+                                            width="100%",
+                                            height="120px",
+                                            radius="large",
+                                            variant="soft",
                                         ),
-                                        rx.icon(tag="moon", size=16),
-                                        justify="between",
+                                        rx.button(
+                                            "Salvar Reflexão",
+                                            on_click=State.save_insight,
+                                            size="2",
+                                            color_scheme="grass",
+                                            width="100%",
+                                            radius="full",
+                                        ),
+                                        spacing="3",
                                         width="100%",
                                     ),
-                                    padding="1em",
-                                    bg="rgba(249, 249, 244, 0.8)",
-                                    border_radius="xl",
-                                    width="100%",
+                                    icon="notebook-pen",
+                                    footer=rx.text(f"Último Insight: {State.last_insight}", size="1", italic=True, opacity=0.7, padding_top="1em")
                                 ),
                                 card_custom(
-                                    "",
-                                    rx.text("Registro de Descobertas de Hoje", size="3", color="#718096", italic=True),
+                                    "Propósito Sugerido",
+                                    rx.text("Baseado no seu Ikigai, hoje é um bom dia para focar em ajudar pessoas com tecnologia.", size="2", italic=True),
+                                    icon="sparkles"
                                 ),
                                 spacing="4",
                                 width=["100%", "100%", "38%"],
@@ -334,7 +403,7 @@ def index() -> rx.Component:
                         # --- FOOTER BUTTON ---
                         rx.vstack(
                             rx.button(
-                                "Start Journey",
+                                "Conversar com Mentor",
                                 size="4",
                                 radius="full",
                                 background="linear-gradient(90deg, #70BFB6 0%, #66B6CE 100%)",
@@ -343,17 +412,15 @@ def index() -> rx.Component:
                                 padding_y="1.5em",
                                 box_shadow="0 10px 30px rgba(112, 191, 182, 0.4)",
                                 _hover={"transform": "scale(1.05)", "box_shadow": "0 15px 40px rgba(112, 191, 182, 0.5)"},
-                                # Ao clicar, abre o chat
                                 on_click=lambda: rx.redirect("/chat"), 
                             ),
-                            rx.text("Começar Minha Descoberta", size="2", color="#718096", opacity=0.6),
+                            rx.text("Inicie sua conversa diária", size="2", color="#718096", opacity=0.6),
                             padding_y="3em",
                             align_items="center",
                         ),
-                        
                         spacing="6",
                         width="100%",
-                        max_width="650px", 
+                        max_width="750px", 
                         margin_x="auto",
                     )
                 ),

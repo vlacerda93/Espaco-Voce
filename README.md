@@ -22,16 +22,15 @@ O aplicativo guia o usuário a responder essas perguntas e usa a IA para conecta
 ## 🚀 Funcionalidades
 
 - **Onboarding Personalizado**: Fluxo de boas-vindas em múltiplos passos que coleta o nome e as respostas do usuário para os 4 pilares do Ikigai. Só aparece uma vez — na primeira utilização.
-- **Dashboard Principal**: Tela inicial com:
-  - Diagrama Ikigai visual (4 círculos sobrepostos com bolha central)
-  - Card "Biblioteca de Sessões" com caminhos guiados
-  - Card "Diário de Insights" para reflexões do dia
-  - Botão **"Start Journey"** para iniciar a conversa com o Mentor IA
-- **Mentor IA com Memória de Propósito**: O chat com a IA (via Groq/Llama-3) recebe automaticamente o perfil Ikigai do usuário no contexto, tornando cada resposta personalizada e conectada ao propósito de vida.
+- **Dashboard Principal**: Tela inicial com design premium e zen:
+  - **Diagrama Ikigai Animado**: 4 círculos com animações de pulsação suave e efeito glow.
+  - **Sua Jornada (Trilha)**: Visualização progresso estilo "mapa" para guiar o usuário.
+  - **Diário de Insights Funcional**: Campo para salvar reflexões diárias que são persistidas no banco de dados.
+  - **Modo Escuro/Claro**: Alternador no topo (Sticky Header) totalmente funcional.
+- **Mentor IA com Contexto Profundo**: O chat com a IA (via Groq/Llama-3) agora lê não apenas o perfil Ikigai, mas também os **últimos 10 insights** do diário, criando uma conversa extremamente contextualizada.
 - **Análise de Sentimentos**: Seleção de humor antes de cada conversa para o mentor adaptar seu tom.
-- **Memória Persistente**: Banco de dados SQLite armazena o perfil Ikigai e o histórico de conversas.
-- **Design Mobile-First**: Interface otimizada para dispositivos móveis com visual clean, glassmorphism e micro-animações.
-- **Roteamento**: Página principal (`/`) com o dashboard e página de chat (`/chat`) separada.
+- **Memória Persistente**: Banco de dados SQLite armazena o perfil Ikigai, histórico de conversas e diário de insights.
+- **Design Premium & Glassmorphism**: Interface otimizada para dispositivos móveis com visual clean, transparências (blur) e micro-animações.
 
 ---
 
@@ -105,18 +104,9 @@ espaco_voce/
 
 ## 🗄️ Banco de Dados
 
-A tabela principal `usuarios` contém:
-
-| Coluna | Tipo | Descrição |
-|---|---|---|
-| `id` | INTEGER | Identificador único |
-| `nome` | TEXT | Nome do usuário |
-| `gosta_fazer` | TEXT | Pilar: O que ama fazer |
-| `bom_em` | TEXT | Pilar: No que é bom |
-| `mundo_precisa` | TEXT | Pilar: O que o mundo precisa |
-| `pago_para` | TEXT | Pilar: Pelo que pode ser pago |
-
-A tabela `diario` armazena cada interação do usuário com o Mentor IA.
+A tabela principal `usuarios` contém o perfil Ikigai.
+A tabela `diario` armazena o histórico do chat.
+A tabela `insights_diario` armazena as reflexões curtas do dashboard para contexto da IA.
 
 ---
 
