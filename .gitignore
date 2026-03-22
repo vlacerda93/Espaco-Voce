@@ -16,6 +16,9 @@ SQL/*.db
 # IDEs
 .vscode/
 
-# Arquivos de sistema
+# Arquivos de sistema e do Assistente IA
 .DS_Store
 Thumbs.db
+.agent/
+.states/
+Brain.md
