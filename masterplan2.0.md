@@ -48,28 +48,17 @@ Todo campo classificado como "sensível" (Diários, Reflexões) deve ser criptog
 
 ---
 
-## 🧠 Fase 4: Motor de Inteligência Pessoal (NLP Local)
-**Objetivo:** Analisar o "Log Humano" sem enviar dados para a nuvem.
+## 🧠 Fase 4: Experiência do Usuário (UI "Grim-Zen")
+**Objetivo:** Uma interface que não distraia, inspirada em terminais e estética Dark/Zen.
 
-### 4.1 Integração com Ollama (Llama 3 / Mistral)
-- **Endpoint de Insight:** Criar uma rota `/api/v1/analyze`.
-- **Processamento:** O app envia os últimos 7 dias de logs (descriptografados em memória) para o Ollama local.
-- **Prompt de Sistema:** "Atue como um analista comportamental. Identifique padrões de procrastinação ou picos de ansiedade nestes dados."
-- **Saída:** JSON estruturado com recomendações de rotina.
-
----
-
-## 🎨 Fase 5: Experiência do Usuário (UI "Grim-Zen")
-**Objetivo:** Uma interface que não distraia, inspirada em terminais e estética Dark.
-
-### 5.1 Dashboard Dinâmico
+### 4.1 Dashboard Dinâmico
 - **Widgets de Foco:** Gráficos de dispersão mostrando a relação entre "Horas de Sono" e "Tarefas Concluídas".
 - **O "Cofre":** Uma área da UI protegida por re-autenticação para acessar os diários profundos.
-- **Componentes:** Uso de **Tailwind CSS** para um design responsivo e customizável via variáveis CSS.
+- **Componentes:** Uso de **Reflex** para um design responsivo e customizável via temas dinâmicos (Hacker, Zen Rose, etc).
 
 ---
 
-## 🚀 Fase 6: Roadmap de Execução (Step-by-Step)
+## 🚀 Fase 5: Roadmap de Execução (Step-by-Step)
 
 ### Etapa 1: O Esqueleto (Semana 1)
 - [ ] Configurar `docker-compose.yml` com Postgres e Python.
@@ -82,9 +71,8 @@ Todo campo classificado como "sensível" (Diários, Reflexões) deve ser criptog
 - [ ] Desenvolver o analisador de logs de erro do sistema (Monitoramento).
 
 ### Etapa 3: A Alma (Semana 3)
-- [ ] Integrar o backend com o serviço local do Ollama.
 - [ ] Criar a lógica de "Carga Cognitiva" nas tarefas.
-- [ ] Refatoração completa do Frontend para o novo padrão visual.
+- [/] Refatoração completa do Frontend para o novo padrão visual (Em andamento - Temas dinâmicos e Glassmorphism OK).
 
 ---
 

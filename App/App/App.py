@@ -16,9 +16,10 @@ class State(rx.State):
     messages: list[dict] = []
     is_processing: bool = False
     sentiment: str = "Neutro"
+    interaction_count: int = 0
     
     # --- DYNAMIC THEMES ---
-    # Opções: "light", "low_dark", "hacker"
+    # Opções: "light", "low_dark", "hacker", "zen_rose"
     tema: str = "hacker" 
 
     def set_tema(self, val): self.tema = val
@@ -111,7 +112,15 @@ class State(rx.State):
         self.user_input = ""
         self.messages.append({"role": "user", "content": txt})
         yield
-        res = await ia_manager.analisar_sentimento_e_salvar(txt, self.usuario_id, self.sentiment)
+        
+        self.interaction_count += 1
+        is_last_message = (self.interaction_count >= 8)
+        
+        res = await ia_manager.analisar_sentimento_e_salvar(txt, self.usuario_id, self.sentiment, is_last_message)
+        
+        if is_last_message:
+            self.interaction_count = 0
+            
         self.messages.append({"role": "assistant", "content": res})
         self.is_processing = False
 
@@ -133,9 +142,9 @@ def ikigai() -> rx.Component:
         </style>
         """),
         rx.center(
-            rx.cond(
-                State.tema == "hacker",
-                rx.box(
+            rx.match(
+                State.tema,
+                ("hacker", rx.box(
                     rx.el.svg(
                         rx.el.defs(
                             rx.el.radial_gradient(
@@ -148,22 +157,22 @@ def ikigai() -> rx.Component:
                         # PAIXÃO
                         rx.el.circle(
                             cx="110", cy="75", r="55", fill="rgba(0, 255, 65, 0.1)", stroke="#00FF41", stroke_width="1.5",
-                            class_name="ikigai-circle circle-1", on_click=State.select_pilar("PAIXÃO")
+                            class_name="ikigai-circle circle-1", on_click=lambda: State.select_pilar("PAIXÃO")
                         ),
                         # RENDA
                         rx.el.circle(
                             cx="110", cy="145", r="55", fill="rgba(0, 255, 65, 0.05)", stroke="#00FF41", stroke_width="1.5", stroke_dasharray="2 2",
-                            class_name="ikigai-circle circle-2", on_click=State.select_pilar("RENDA")
+                            class_name="ikigai-circle circle-2", on_click=lambda: State.select_pilar("RENDA")
                         ),
                         # TALENTO
                         rx.el.circle(
                             cx="75", cy="110", r="55", fill="rgba(0, 255, 65, 0.1)", stroke="#00FF41", stroke_width="1.5",
-                            class_name="ikigai-circle circle-3", on_click=State.select_pilar("TALENTO")
+                            class_name="ikigai-circle circle-3", on_click=lambda: State.select_pilar("TALENTO")
                         ),
                         # MISSÃO
                         rx.el.circle(
                             cx="145", cy="110", r="55", fill="rgba(0, 255, 65, 0.05)", stroke="#00FF41", stroke_width="1.5", stroke_dasharray="2 2",
-                            class_name="ikigai-circle circle-4", on_click=State.select_pilar("MISSÃO")
+                            class_name="ikigai-circle circle-4", on_click=lambda: State.select_pilar("MISSÃO")
                         ),
                         rx.el.circle(cx="110", cy="110", r="26", fill="black", stroke="#00FF41", stroke_width="2"),
                         rx.el.text("VAULT", x="110", y="114", text_anchor="middle", font_size="9", font_weight="800", fill="#00FF41", font_family="monospace"),
@@ -174,66 +183,80 @@ def ikigai() -> rx.Component:
                         width="280", height="280", view_box="0 0 220 220"
                     ),
                     position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
-                ),
-                rx.cond(
-                    State.tema == "low_dark",
-                    rx.box(
-                        rx.el.svg(
-                            rx.el.circle(
-                                cx="110", cy="75", r="58", fill="rgba(63, 81, 181, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
-                                class_name="ikigai-circle circle-1", on_click=State.select_pilar("PAIXÃO")
-                            ),
-                            rx.el.circle(
-                                cx="110", cy="145", r="58", fill="rgba(92, 107, 192, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
-                                class_name="ikigai-circle circle-2", on_click=State.select_pilar("RENDA")
-                            ),
-                            rx.el.circle(
-                                cx="75", cy="110", r="58", fill="rgba(63, 81, 181, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
-                                class_name="ikigai-circle circle-3", on_click=State.select_pilar("TALENTO")
-                            ),
-                            rx.el.circle(
-                                cx="145", cy="110", r="58", fill="rgba(92, 107, 192, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
-                                class_name="ikigai-circle circle-4", on_click=State.select_pilar("MISSÃO")
-                            ),
-                            rx.el.circle(cx="110", cy="110", r="30", fill="#1A1B26", stroke="#5C6BC0", stroke_width="2"),
-                            rx.el.text("IKIGAI", x="110", y="114", text_anchor="middle", font_size="10", font_weight="800", fill="#A9B1D6"),
-                            rx.el.text("PAIXÃO", x="110", y="45", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
-                            rx.el.text("RENDA", x="110", y="178", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
-                            rx.el.text("TALENTO", x="50", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
-                            rx.el.text("MISSÃO", x="175", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
-                            width="280", height="280", view_box="0 0 220 220"
+                )),
+                ("low_dark", rx.box(
+                    rx.el.svg(
+                        rx.el.circle(
+                            cx="110", cy="75", r="58", fill="rgba(63, 81, 181, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                            class_name="ikigai-circle circle-1", on_click=lambda: State.select_pilar("PAIXÃO")
                         ),
-                        position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
+                        rx.el.circle(
+                            cx="110", cy="145", r="58", fill="rgba(92, 107, 192, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                            class_name="ikigai-circle circle-2", on_click=lambda: State.select_pilar("RENDA")
+                        ),
+                        rx.el.circle(
+                            cx="75", cy="110", r="58", fill="rgba(63, 81, 181, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                            class_name="ikigai-circle circle-3", on_click=lambda: State.select_pilar("TALENTO")
+                        ),
+                        rx.el.circle(
+                            cx="145", cy="110", r="58", fill="rgba(92, 107, 192, 0.3)", stroke="#5C6BC0", stroke_width="1.5",
+                            class_name="ikigai-circle circle-4", on_click=lambda: State.select_pilar("MISSÃO")
+                        ),
+                        rx.el.circle(cx="110", cy="110", r="30", fill="#1A1B26", stroke="#5C6BC0", stroke_width="2"),
+                        rx.el.text("IKIGAI", x="110", y="114", text_anchor="middle", font_size="10", font_weight="800", fill="#A9B1D6"),
+                        rx.el.text("PAIXÃO", x="110", y="45", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                        rx.el.text("RENDA", x="110", y="178", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                        rx.el.text("TALENTO", x="50", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                        rx.el.text("MISSÃO", x="175", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#E0E0E0"),
+                        width="280", height="280", view_box="0 0 220 220"
                     ),
-                    # Light Mode
-                    rx.box(
-                        rx.el.svg(
-                            rx.el.circle(
-                                cx="110", cy="75", r="58", fill="rgba(112, 191, 182, 0.2)", stroke="#70BFB6",
-                                class_name="ikigai-circle circle-1", on_click=State.select_pilar("PAIXÃO")
-                            ),
-                            rx.el.circle(
-                                cx="110", cy="145", r="58", fill="rgba(151, 140, 185, 0.2)", stroke="#978CB9",
-                                class_name="ikigai-circle circle-2", on_click=State.select_pilar("RENDA")
-                            ),
-                            rx.el.circle(
-                                cx="75", cy="110", r="58", fill="rgba(102, 182, 206, 0.2)", stroke="#66B6CE",
-                                class_name="ikigai-circle circle-3", on_click=State.select_pilar("TALENTO")
-                            ),
-                            rx.el.circle(
-                                cx="145", cy="110", r="58", fill="rgba(238, 195, 115, 0.2)", stroke="#EEC373",
-                                class_name="ikigai-circle circle-4", on_click=State.select_pilar("MISSÃO")
-                            ),
-                            rx.el.circle(cx="110", cy="110", r="28", fill="white", stroke="#E2E8F0"),
-                            rx.el.text("IKIGAI", x="110", y="114", text_anchor="middle", font_size="10", font_weight="800", fill="#2D3748"),
-                            rx.el.text("PAIXÃO", x="110", y="42", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
-                            rx.el.text("RENDA", x="110", y="181", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
-                            rx.el.text("TALENTO", x="50", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
-                            rx.el.text("MISSÃO", x="175", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
-                            width="280", height="280", view_box="0 0 220 220"
+                    position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
+                )),
+                ("zen_rose", rx.box(
+                    rx.el.svg(
+                        rx.el.defs(
+                            rx.el.radial_gradient(rx.el.stop(offset="0%", stop_color="rgba(199, 125, 154, 0.2)"), rx.el.stop(offset="100%", stop_color="transparent"), id="glow-rose")
                         ),
-                        position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
-                    )
+                        rx.el.circle(cx="110", cy="110", r="100", fill="url(#glow-rose)", filter="blur(30px)"),
+                        rx.el.circle(cx="110", cy="75", r="60", fill="rgba(199, 125, 154, 0.15)", stroke="#C77D9A", stroke_width="2", class_name="ikigai-circle circle-1", on_click=lambda: State.select_pilar("PAIXÃO")),
+                        rx.el.circle(cx="110", cy="145", r="60", fill="rgba(252, 227, 138, 0.15)", stroke="#FCE38A", stroke_width="2", class_name="ikigai-circle circle-2", on_click=lambda: State.select_pilar("RENDA")),
+                        rx.el.circle(cx="75", cy="110", r="60", fill="rgba(255, 133, 161, 0.15)", stroke="#FF85A1", stroke_width="2", class_name="ikigai-circle circle-3", on_click=lambda: State.select_pilar("TALENTO")),
+                        rx.el.circle(cx="145", cy="110", r="60", fill="rgba(168, 164, 206, 0.15)", stroke="#A8A4CE", stroke_width="2", class_name="ikigai-circle circle-4", on_click=lambda: State.select_pilar("MISSÃO")),
+                        rx.el.circle(cx="110", cy="110", r="32", fill="#FFFDF5", stroke="#C77D9A", stroke_width="2"),
+                        rx.el.circle(cx="110", cy="110", r="28", fill="none", stroke="#FCE38A", stroke_width="1", stroke_dasharray="2 2"),
+                        rx.el.text("IKIGAI", x="110", y="115", text_anchor="middle", font_size="10", font_weight="900", fill="#C77D9A"),
+                        width="280", height="280", view_box="0 0 220 220"
+                    ),
+                    position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
+                )),
+                # Default Light
+                rx.box(
+                    rx.el.svg(
+                        rx.el.circle(
+                            cx="110", cy="75", r="58", fill="rgba(112, 191, 182, 0.2)", stroke="#70BFB6",
+                            class_name="ikigai-circle circle-1", on_click=lambda: State.select_pilar("PAIXÃO")
+                        ),
+                        rx.el.circle(
+                            cx="110", cy="145", r="58", fill="rgba(151, 140, 185, 0.2)", stroke="#978CB9",
+                            class_name="ikigai-circle circle-2", on_click=lambda: State.select_pilar("RENDA")
+                        ),
+                        rx.el.circle(
+                            cx="75", cy="110", r="58", fill="rgba(102, 182, 206, 0.2)", stroke="#66B6CE",
+                            class_name="ikigai-circle circle-3", on_click=lambda: State.select_pilar("TALENTO")
+                        ),
+                        rx.el.circle(
+                            cx="145", cy="110", r="58", fill="rgba(238, 195, 115, 0.2)", stroke="#EEC373",
+                            class_name="ikigai-circle circle-4", on_click=lambda: State.select_pilar("MISSÃO")
+                        ),
+                        rx.el.circle(cx="110", cy="110", r="28", fill="white", stroke="#E2E8F0"),
+                        rx.el.text("IKIGAI", x="110", y="114", text_anchor="middle", font_size="10", font_weight="800", fill="#2D3748"),
+                        rx.el.text("PAIXÃO", x="110", y="42", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                        rx.el.text("RENDA", x="110", y="181", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                        rx.el.text("TALENTO", x="50", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                        rx.el.text("MISSÃO", x="175", y="112", text_anchor="middle", font_size="8", font_weight="700", fill="#2D3748"),
+                        width="280", height="280", view_box="0 0 220 220"
+                    ),
+                    position="relative", width="300px", height="300px", display="flex", align_items="center", justify_content="center"
                 )
             ),
             padding_y="1.5em"
@@ -242,13 +265,29 @@ def ikigai() -> rx.Component:
         rx.cond(
             State.selected_pilar != "",
             rx.vstack(
-                rx.heading(f"Pilar: {State.selected_pilar}", size="4", color=rx.cond(State.tema=="hacker", "#00FF41", "inherit")),
+                rx.heading(f"Pilar: {State.selected_pilar}", size="4", color=rx.match(
+                    State.tema,
+                    ("hacker", "#00FF41"),
+                    ("zen_rose", "#C77D9A"),
+                    "inherit"
+                )),
                 rx.text(State.pilar_content, size="2", italic=True, text_align="center"),
-                rx.button("Fechar", on_click=State.select_pilar(""), variant="soft", size="1"),
+                rx.button("Fechar", on_click=lambda: State.select_pilar(""), variant="soft", size="1"),
                 padding="1.5em",
-                bg=rx.cond(State.tema=="hacker", "rgba(0,255,65,0.05)", "rgba(0,0,0,0.03)"),
+                bg=rx.match(
+                    State.tema,
+                    ("hacker", "rgba(0,255,65,0.05)"),
+                    ("zen_rose", "rgba(255, 255, 255, 0.4)"),
+                    "rgba(0,0,0,0.03)"
+                ),
+                backdrop_filter=rx.cond(State.tema == "zen_rose", "blur(10px)", "none"),
                 border_radius="xl",
-                border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "1px solid rgba(0,0,0,0.1)"),
+                border=rx.match(
+                    State.tema,
+                    ("hacker", "1px solid #00FF41"),
+                    ("zen_rose", "1px solid rgba(255, 133, 161, 0.3)"),
+                    "1px solid rgba(0,0,0,0.1)"
+                ),
                 width="100%",
                 max_width="400px",
                 margin_x="auto",
@@ -262,15 +301,26 @@ def ikigai() -> rx.Component:
 def navbar() -> rx.Component:
     return rx.hstack(
         rx.hstack(
-            rx.icon(tag="shield-check", color=rx.cond(State.tema=="hacker", "#00FF41", "#5C6BC0"), size=24),
-            rx.heading("ANTIGRAVITY", size="5", weight="bold", color=rx.cond(State.tema=="hacker", "#00FF41", "#5C6BC0"), font_family="monospace"),
+            rx.icon(tag="shield-check", color=rx.match(
+                State.tema,
+                ("hacker", "#00FF41"),
+                ("zen_rose", "#C77D9A"),
+                ("#5C6BC0")
+            ), size=24),
+            rx.heading("ANTIGRAVITY", size="5", weight="bold", color=rx.match(
+                State.tema,
+                ("hacker", "#00FF41"),
+                ("zen_rose", "#C77D9A"),
+                ("#5C6BC0")
+            ), font_family="monospace"),
             spacing="3",
         ),
         rx.spacer(),
         rx.segmented_control.root(
-            rx.segmented_control.item("Hacker", value="hacker"),
-            rx.segmented_control.item("Low Dark", value="low_dark"),
-            rx.segmented_control.item("Light", value="light"),
+            rx.segmented_control.item("Hacker 💻", value="hacker"),
+            rx.segmented_control.item("Low Dark 🌙", value="low_dark"),
+            rx.segmented_control.item("Light ☀️", value="light"),
+            rx.segmented_control.item("Zen Rose 🌸", value="zen_rose"),
             on_change=State.set_tema,
             value=State.tema,
             variant="classic",
@@ -278,8 +328,20 @@ def navbar() -> rx.Component:
         ),
         width="100%",
         padding="1.5em",
-        bg=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1A1A", "#F7FAFC")),
-        border_bottom=rx.cond(State.tema=="hacker", "1px solid #00FF41", "none"),
+        bg=rx.match(
+            State.tema,
+            ("hacker", "black"),
+            ("low_dark", "#1A1A1A"),
+            ("zen_rose", "rgba(255, 253, 245, 0.8)"),
+            "#F7FAFC"
+        ),
+        backdrop_filter=rx.cond(State.tema == "zen_rose", "blur(12px)", "none"),
+        border_bottom=rx.match(
+            State.tema,
+            ("hacker", "1px solid #00FF41"),
+            ("zen_rose", "1px solid rgba(199, 125, 154, 0.1)"),
+            "none"
+        ),
     )
 
 
@@ -294,12 +356,17 @@ def trail_item(title: str, is_active: bool = False, is_locked: bool = True) -> r
             width="45px",
             height="45px",
             border_radius="full",
-            bg=rx.cond(is_locked, "#EDF2F7", rx.cond(is_active, "#70BFB6", "#A0AEC0")),
-            color="white",
-            box_shadow="lg" if is_active else "none",
+            bg=rx.match(
+                State.tema,
+                ("hacker", rx.cond(is_locked, "#001100", rx.cond(is_active, "#00FF41", "#003B00"))),
+                ("zen_rose", rx.cond(is_locked, "rgba(255,255,255,0.3)", rx.cond(is_active, "#C77D9A", "#E8B4CB"))),
+                rx.cond(is_locked, "#EDF2F7", rx.cond(is_active, "#70BFB6", "#A0AEC0"))
+            ),
+            color=rx.cond(is_active, "white", rx.cond(State.tema == "hacker", "#003B00", "#718096")),
+            box_shadow=rx.cond(is_active, rx.match(State.tema, ("zen_rose", "0 0 15px rgba(199, 125, 154, 0.4)"), "lg"), "none"),
             border=rx.cond(is_active, "2px solid white", "none"),
         ),
-        rx.text(title, size="1", weight="medium", width="60px", text_align="center", color="#718096"),
+        rx.text(title, size="1", weight="medium", width="60px", text_align="center", color=rx.match(State.tema, ("zen_rose", "#C77D9A"), ("hacker", "#00FF41"), "#718096")),
         spacing="2",
         align_items="center",
     )
@@ -321,11 +388,23 @@ def meditation_trail() -> rx.Component:
             padding_x="1em",
             justify="center",
         ),
-        bg=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1B26", "rgba(255,255,255,0.4)")),
+        bg=rx.match(
+            State.tema,
+            ("hacker", "black"),
+            ("low_dark", "#1A1B26"),
+            ("zen_rose", "rgba(255, 255, 255, 0.2)"),
+            "rgba(255,255,255,0.4)"
+        ),
+        backdrop_filter=rx.cond(State.tema == "zen_rose", "blur(8px)", "none"),
         padding="2em",
         border_radius="15px",
         width="100%",
-        border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "1px solid rgba(0,0,0,0.1)"),
+        border=rx.match(
+            State.tema,
+            ("hacker", "1px solid #00FF41"),
+            ("zen_rose", "1px solid rgba(255, 255, 255, 0.3)"),
+            "1px solid rgba(0,0,0,0.1)"
+        ),
     )
 
 
@@ -339,11 +418,28 @@ def card_custom(title: str, content: rx.Component, icon: str = "", footer: rx.Co
         ),
         content,
         footer,
-        bg=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1B26", "white")),
+        bg=rx.match(
+            State.tema,
+            ("hacker", "black"),
+            ("low_dark", "#1A1B26"),
+            ("zen_rose", "rgba(255, 255, 255, 0.4)"),
+            "white"
+        ),
+        backdrop_filter=rx.cond(State.tema == "zen_rose", "blur(10px)", "none"),
         padding="1.5em",
         border_radius="15px",
-        box_shadow=rx.cond(State.tema=="hacker", "0 0 20px rgba(0,255,65,0.1)", "0 8px 32px rgba(0,0,0,0.05)"),
-        border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "1px solid rgba(0,0,0,0.1)"),
+        box_shadow=rx.match(
+            State.tema,
+            ("hacker", "0 0 20px rgba(0,255,65,0.1)"),
+            ("zen_rose", "0 10px 40px rgba(199, 125, 154, 0.1)"),
+            "0 8px 32px rgba(0,0,0,0.05)"
+        ),
+        border=rx.match(
+            State.tema,
+            ("hacker", "1px solid #00FF41"),
+            ("zen_rose", "1px solid rgba(255, 255, 255, 0.5)"),
+            "1px solid rgba(0,0,0,0.1)"
+        ),
         width="100%",
         align_items="start",
     )
@@ -356,79 +452,82 @@ def onboarding_view() -> rx.Component:
             rx.heading("Bem-vindo ao Espaço Você", size="8", weight="bold", color="#1A202C", text_align="center"),
             rx.text("Vamos iniciar sua jornada para encontrar seu Ikigai.", size="4", color="#4A5568", text_align="center"),
             
-            # --- STEP 1: NOME ---
-            rx.cond(
-                State.onboarding_step == 1,
-                rx.vstack(
-                    rx.input(value=State.onboarding_nome, on_change=State.set_onboarding_nome, placeholder="Seu nome...", size="3", width="100%", radius="large"),
-                    rx.button("Próximo", on_click=lambda: State.set_onboarding_step(2), width="100%", color_scheme="grass", size="3"),
-                    spacing="4", width="100%"
-                )
-            ),
-            
-            # --- STEP 2: O QUE AMA ---
-            rx.cond(
-                State.onboarding_step == 2,
-                rx.vstack(
-                    rx.text("❤️ O que você ama fazer?", weight="bold", size="5"),
-                    rx.text("Suas paixões, hobbies e interesses.", size="2", opacity=0.8),
-                    rx.text_area(value=State.onboarding_gosta, on_change=State.set_onboarding_gosta, placeholder="Eu amo...", size="3", width="100%", height="120px"),
-                    rx.hstack(
-                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(1), variant="soft"),
-                        rx.button("Próximo", on_click=lambda: State.set_onboarding_step(3), color_scheme="grass", flex="1"),
-                        width="100%"
-                    ),
-                    spacing="4", width="100%"
-                )
-            ),
-            
-            # --- STEP 3: BOM EM ---
-            rx.cond(
-                State.onboarding_step == 3,
-                rx.vstack(
-                    rx.text("💪 No que você é bom?", weight="bold", size="5"),
-                    rx.text("Suas habilidades, talentos e competências.", size="2", opacity=0.8),
-                    rx.text_area(value=State.onboarding_bom, on_change=State.set_onboarding_bom, placeholder="Eu sou bom em...", size="3", width="100%", height="120px"),
-                    rx.hstack(
-                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(2), variant="soft"),
-                        rx.button("Próximo", on_click=lambda: State.set_onboarding_step(4), color_scheme="grass", flex="1"),
-                        width="100%"
-                    ),
-                    spacing="4", width="100%"
-                )
-            ),
-            
-            # --- STEP 4: MUNDO PRECISA ---
-            rx.cond(
-                State.onboarding_step == 4,
-                rx.vstack(
-                    rx.text("🌍 O que o mundo precisa?", weight="bold", size="5"),
-                    rx.text("Sua contribuição para o bem-estar da sociedade.", size="2", opacity=0.8),
-                    rx.text_area(value=State.onboarding_precisa, on_change=State.set_onboarding_precisa, placeholder="O mundo precisa de...", size="3", width="100%", height="120px"),
-                    rx.hstack(
-                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(3), variant="soft"),
-                        rx.button("Próximo", on_click=lambda: State.set_onboarding_step(5), color_scheme="grass", flex="1"),
-                        width="100%"
-                    ),
-                    spacing="4", width="100%"
-                )
-            ),
-            
-            # --- STEP 5: PAGO PARA ---
-            rx.cond(
-                State.onboarding_step == 5,
-                rx.vstack(
-                    rx.text("💰 Pelo que você pode ser pago?", weight="bold", size="5"),
-                    rx.text("Sua profissão, trabalho ou fontes de renda estimadas.", size="2", opacity=0.8),
-                    rx.text_area(value=State.onboarding_pago, on_change=State.set_onboarding_pago, placeholder="Eu posso ser pago por...", size="3", width="100%", height="120px"),
-                    rx.hstack(
-                        rx.button("Voltar", on_click=lambda: State.set_onboarding_step(4), variant="soft"),
-                        rx.button("Finalizar", on_click=State.finish_onboarding, color_scheme="grass", flex="1"),
-                        width="100%"
-                    ),
-                    spacing="4", width="100%"
-                )
-            ),
+            rx.vstack( # Added this vstack to wrap all conditional steps
+                # --- STEP 1: NOME ---
+                rx.cond(
+                    State.onboarding_step == 1,
+                    rx.vstack(
+                        rx.input(value=State.onboarding_nome, on_change=State.set_onboarding_nome, placeholder="Seu nome...", size="3", width="100%", radius="large"),
+                        rx.button("Próximo", on_click=lambda: State.set_onboarding_step(2), width="100%", color_scheme="grass", size="3"),
+                        spacing="4", width="100%"
+                    )
+                ),
+                
+                # --- STEP 2: O QUE AMA ---
+                rx.cond(
+                    State.onboarding_step == 2,
+                    rx.vstack(
+                        rx.text("❤️ O que você ama fazer?", weight="bold", size="5"),
+                        rx.text("Suas paixões, hobbies e interesses.", size="2", opacity=0.8),
+                        rx.text_area(value=State.onboarding_gosta, on_change=State.set_onboarding_gosta, placeholder="Eu amo...", size="3", width="100%", height="120px"),
+                        rx.hstack(
+                            rx.button("Voltar", on_click=lambda: State.set_onboarding_step(1), variant="soft"),
+                            rx.button("Próximo", on_click=lambda: State.set_onboarding_step(3), color_scheme="grass", flex="1"),
+                            width="100%"
+                        ),
+                        spacing="4", width="100%"
+                    )
+                ),
+                
+                # --- STEP 3: BOM EM ---
+                rx.cond(
+                    State.onboarding_step == 3,
+                    rx.vstack(
+                        rx.text("💪 No que você é bom?", weight="bold", size="5"),
+                        rx.text("Suas habilidades, talentos e competências.", size="2", opacity=0.8),
+                        rx.text_area(value=State.onboarding_bom, on_change=State.set_onboarding_bom, placeholder="Eu sou bom em...", size="3", width="100%", height="120px"),
+                        rx.hstack(
+                            rx.button("Voltar", on_click=lambda: State.set_onboarding_step(2), variant="soft"),
+                            rx.button("Próximo", on_click=lambda: State.set_onboarding_step(4), color_scheme="grass", flex="1"),
+                            width="100%"
+                        ),
+                        spacing="4", width="100%"
+                    )
+                ),
+                
+                # --- STEP 4: MUNDO PRECISA ---
+                rx.cond(
+                    State.onboarding_step == 4,
+                    rx.vstack(
+                        rx.text("🌍 O que o mundo precisa?", weight="bold", size="5"),
+                        rx.text("Sua contribuição para o bem-estar da sociedade.", size="2", opacity=0.8),
+                        rx.text_area(value=State.onboarding_precisa, on_change=State.set_onboarding_precisa, placeholder="O mundo precisa de...", size="3", width="100%", height="120px"),
+                        rx.hstack(
+                            rx.button("Voltar", on_click=lambda: State.set_onboarding_step(3), variant="soft"),
+                            rx.button("Próximo", on_click=lambda: State.set_onboarding_step(5), color_scheme="grass", flex="1"),
+                            width="100%"
+                        ),
+                        spacing="4", width="100%"
+                    )
+                ),
+                
+                # --- STEP 5: PAGO PARA ---
+                rx.cond(
+                    State.onboarding_step == 5,
+                    rx.vstack(
+                        rx.text("💰 Pelo que você pode ser pago?", weight="bold", size="5"),
+                        rx.text("Sua profissão, trabalho ou fontes de renda estimadas.", size="2", opacity=0.8),
+                        rx.text_area(value=State.onboarding_pago, on_change=State.set_onboarding_pago, placeholder="Eu posso ser pago por...", size="3", width="100%", height="120px"),
+                        rx.hstack(
+                            rx.button("Voltar", on_click=lambda: State.set_onboarding_step(4), variant="soft"),
+                            rx.button("Finalizar", on_click=State.finish_onboarding, color_scheme="grass", flex="1"),
+                            width="100%"
+                        ),
+                        spacing="4", width="100%"
+                    )
+                ),
+                spacing="4", width="100%" # Apply spacing and width to the wrapper vstack
+            ), # Closing tag for the added vstack
             
             bg="white",
             padding="3em",
@@ -448,14 +547,25 @@ def index() -> rx.Component:
             State.show_onboarding,
             onboarding_view(),
             rx.box(
-                # --- BACKGROUND ---
+                # --- BACKGROUND (PRO 3.0) ---
                 rx.box(
                     position="fixed", top="0", left="0", width="100%", height="100%",
-                    background=rx.color_mode_cond(
-                        "radial-gradient(circle at 80% 10%, rgba(238,195,115,0.15), transparent 50%), radial-gradient(circle at 10% 80%, rgba(112,191,182,0.15), transparent 50%), #F7FAFC",
-                        "radial-gradient(circle at 20% 20%, rgba(112,191,182,0.1), transparent 50%), #0F172A"
+                    background=rx.match(
+                        State.tema,
+                        ("hacker", "radial-gradient(circle at 80% 10%, rgba(0,255,65,0.05), transparent 50%), #000"),
+                        ("low_dark", "radial-gradient(circle at 20% 20%, rgba(92,107,192,0.1), transparent 50%), #0F172A"),
+                        ("zen_rose", "radial-gradient(circle at 70% 20%, rgba(232,180,203,0.2), transparent 50%), radial-gradient(circle at 30% 80%, rgba(252,237,178,0.25), transparent 50%), radial-gradient(circle at 50% 50%, rgba(199, 125, 154, 0.05), transparent 70%), #FFFDF5"),
+                        "radial-gradient(circle at 80% 10%, rgba(238,195,115,0.15), transparent 50%), #F7FAFC" # Light default
                     ),
                     z_index="-1",
+                ),
+                # Grain Overlay for Texture
+                rx.box(
+                    position="fixed", top="0", left="0", width="100%", height="100%",
+                    opacity="0.03",
+                    pointer_events="none",
+                    background_image="url('https://grainy-gradients.vercel.app/noise.svg')",
+                    z_index="0",
                 ),
                 navbar(),
                 rx.container(
@@ -530,11 +640,21 @@ def index() -> rx.Component:
                                 "Conversar com Mentor",
                                 size="4",
                                 radius="full",
-                                background="linear-gradient(90deg, #70BFB6 0%, #66B6CE 100%)",
+                                background=rx.match(
+                                    State.tema,
+                                    ("hacker", "linear-gradient(90deg, #00FF41 0%, #008F11 100%)"),
+                                    ("zen_rose", "linear-gradient(90deg, #C77D9A 0%, #E8B4CB 100%)"),
+                                    "linear-gradient(90deg, #70BFB6 0%, #66B6CE 100%)"
+                                ),
                                 color="white",
                                 padding_x="3em",
                                 padding_y="1.5em",
-                                box_shadow="0 10px 30px rgba(112, 191, 182, 0.4)",
+                                box_shadow=rx.match(
+                                    State.tema,
+                                    ("hacker", "0 10px 30px rgba(0, 255, 65, 0.3)"),
+                                    ("zen_rose", "0 10px 30px rgba(199, 125, 154, 0.3)"),
+                                    "0 10px 30px rgba(112, 191, 182, 0.4)"
+                                ),
                                 _hover={"transform": "scale(1.05)", "box_shadow": "0 15px 40px rgba(112, 191, 182, 0.5)"},
                                 on_click=lambda: rx.redirect("/chat"), 
                             ),
@@ -550,8 +670,20 @@ def index() -> rx.Component:
                 ),
             )
         ),
-        background=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#1A1B26", "#F0F2F5")),
-        color=rx.cond(State.tema=="hacker", "#00FF41", rx.cond(State.tema=="low_dark", "#A9B1D6", "#333")),
+        background=rx.match(
+            State.tema,
+            ("hacker", "black"),
+            ("low_dark", "#1A1B26"),
+            ("zen_rose", "#FFFDF5"),
+            "#F0F2F5" # default light
+        ),
+        color=rx.match(
+            State.tema,
+            ("hacker", "#00FF41"),
+            ("low_dark", "#A9B1D6"),
+            ("zen_rose", "#C77D9A"), # Soft pastel rose for text
+            "#333" # default light
+        ),
         on_mount=State.on_load
     )
 
@@ -561,19 +693,20 @@ def index() -> rx.Component:
 def chat_page() -> rx.Component:
     return rx.box(
         rx.box(
-            position="fixed",
-            top="0",
-            left="0",
-            width="100%",
-            height="100%",
-            background=rx.cond(State.tema=="hacker", "black", rx.cond(State.tema=="low_dark", "#0F172A", "linear-gradient(160deg, #FDFCFB 0%, #D8E5D8 100%)")),
+            background=rx.match(
+                State.tema,
+                ("hacker", "black"),
+                ("low_dark", "#0F172A"),
+                ("zen_rose", "radial-gradient(circle at 70% 20%, rgba(232,180,203,0.15), transparent 50%), #FFFDF5"),
+                "linear-gradient(160deg, #FDFCFB 0%, #D8E5D8 100%)"
+            ),
             z_index="-1",
         ),
         rx.container(
             rx.vstack(
                 rx.hstack(
-                    rx.button(rx.icon(tag="arrow-left"), on_click=lambda: rx.redirect("/"), variant="ghost", color=rx.cond(State.tema=="hacker", "#00FF41", "inherit")),
-                    rx.heading("Mentor IA", size="6", weight="bold", color=rx.cond(State.tema=="hacker", "#00FF41", "inherit")),
+                    rx.button(rx.icon(tag="arrow-left"), on_click=lambda: rx.redirect("/"), variant="ghost", color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", "#C77D9A"), "inherit")),
+                    rx.heading("Mentor IA", size="6", weight="bold", color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", "#C77D9A"), "inherit")),
                     justify="start",
                     width="100%",
                     padding_y="1em",
@@ -583,15 +716,22 @@ def chat_page() -> rx.Component:
                         rx.flex(
                             rx.box(
                                 rx.markdown(m["content"]),
-                                bg=rx.cond(
-                                    m["role"]=="user", 
-                                    rx.cond(State.tema=="hacker", "#003B00", "#E2E8F0"), 
-                                    rx.cond(State.tema=="hacker", "#001100", "white")
+                                bg=rx.match(
+                                    State.tema,
+                                    ("hacker", rx.cond(m["role"]=="user", "#003B00", "#001100")),
+                                    ("zen_rose", rx.cond(m["role"]=="user", "#C77D9A", "rgba(255, 253, 245, 0.6)")),
+                                    rx.cond(m["role"]=="user", "#E2E8F0", "white")
                                 ),
-                                color=rx.cond(State.tema=="hacker", "#00FF41", "#1A202C"),
+                                color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", rx.cond(m["role"]=="user", "white", "#C77D9A")), "#1A202C"),
+                                backdrop_filter=rx.cond(State.tema == "zen_rose", "blur(10px)", "none"),
                                 padding="1.2em",
                                 border_radius="15px",
-                                border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "none"),
+                                border=rx.match(
+                                    State.tema,
+                                    ("hacker", "1px solid #00FF41"),
+                                    ("zen_rose", "1px solid rgba(199, 125, 154, 0.1)"),
+                                    "none"
+                                ),
                                 max_width="90%",
                                 box_shadow="sm",
                             ),
@@ -615,28 +755,30 @@ def chat_page() -> rx.Component:
                         on_change=State.set_user_input,
                         width="100%",
                         radius="full",
-                        bg=rx.cond(State.tema=="hacker", "black", "white"),
-                        color=rx.cond(State.tema=="hacker", "#00FF41", "inherit"),
-                        border=rx.cond(State.tema=="hacker", "1px solid #00FF41", "none"),
+                        bg=rx.match(State.tema, ("hacker", "black"), ("zen_rose", "rgba(255,255,255,0.5)"), "white"),
+                        color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", "#C77D9A"), "inherit"),
+                        border=rx.match(State.tema, ("hacker", "1px solid #00FF41"), ("zen_rose", "1px solid #C77D9A"), "none"),
                         on_key_down=State.handle_submit_enter,
                     ),
                     rx.button(
                         rx.cond(State.is_processing, rx.spinner(size="2"), rx.icon(tag="send")),
                         on_click=State.handle_submit,
                         radius="full",
-                        color_scheme="grass",
+                        color_scheme=rx.match(State.tema, ("zen_rose", "crimson"), "grass"),
                     ),
                     width="100%",
                     spacing="3",
                 ),
                 max_width="600px",
             ),
-            position="fixed",
-            bottom="0",
-            width="100%",
-            padding="2em",
-            bg=rx.cond(State.tema=="hacker", "rgba(0,0,0,0.9)", rx.cond(State.tema=="low_dark", "rgba(15,23,42,0.9)", "rgba(255,255,255,0.8)")),
-            backdrop_filter="blur(10px)",
+            bg=rx.match(
+                State.tema,
+                ("hacker", "rgba(0,0,0,0.9)"),
+                ("low_dark", "rgba(15,23,42,0.9)"),
+                ("zen_rose", "rgba(255, 253, 245, 0.7)"),
+                "rgba(255,255,255,0.8)"
+            ),
+            backdrop_filter="blur(12px)",
         )
     )
 

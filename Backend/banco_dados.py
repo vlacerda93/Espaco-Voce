@@ -159,8 +159,93 @@ def buscar_insights_usuario(usuario_id, limite=5):
         print(f"❌ Erro ao buscar insights: {e}")
         return []
 
-# Executa a criação da tabela na importação
+# --- MIGRAÇÃO: Colunas de Memória Dinâmica ---
+def _migrar_colunas_usuario():
+    """Adiciona colunas fatos_diversos e fase_projeto se não existirem."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        # Verifica colunas existentes
+        cursor.execute("PRAGMA table_info(usuarios)")
+        colunas = [col[1] for col in cursor.fetchall()]
+        if "fatos_diversos" not in colunas:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN fatos_diversos TEXT DEFAULT ''")
+            print("✅ Coluna 'fatos_diversos' adicionada à tabela usuarios.")
+        if "fase_projeto" not in colunas:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN fase_projeto TEXT DEFAULT 'Descoberta'")
+            print("✅ Coluna 'fase_projeto' adicionada à tabela usuarios.")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Migração de colunas: {e}")
+
+
+def buscar_fatos_usuario(usuario_id):
+    """Retorna o texto livre de fatos diversos do usuário."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("SELECT fatos_diversos FROM usuarios WHERE id = ?", (usuario_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row and row[0] else ""
+    except Exception as e:
+        print(f"❌ Erro ao buscar fatos: {e}")
+        return ""
+
+
+def atualizar_fatos_usuario(usuario_id, novos_fatos: str):
+    """Acrescenta novos fatos ao campo existente, sem sobrescrever."""
+    try:
+        existentes = buscar_fatos_usuario(usuario_id)
+        # Evita duplicatas triviais
+        if novos_fatos.strip() in existentes:
+            return True
+        atualizado = (existentes + "\n" + novos_fatos).strip()
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE usuarios SET fatos_diversos = ? WHERE id = ?", (atualizado, usuario_id))
+        conn.commit()
+        conn.close()
+        print(f"💾 Fatos atualizados para usuário {usuario_id}")
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao atualizar fatos: {e}")
+        return False
+
+
+def buscar_fase_projeto(usuario_id):
+    """Retorna a fase atual do projeto do usuário."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("SELECT fase_projeto FROM usuarios WHERE id = ?", (usuario_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row and row[0] else "Descoberta"
+    except Exception as e:
+        print(f"❌ Erro ao buscar fase: {e}")
+        return "Descoberta"
+
+
+def atualizar_fase_projeto(usuario_id, nova_fase: str):
+    """Atualiza a fase do projeto (Descoberta, Planejamento, Execução, Revisão)."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE usuarios SET fase_projeto = ? WHERE id = ?", (nova_fase, usuario_id))
+        conn.commit()
+        conn.close()
+        print(f"🔄 Fase do projeto atualizada para '{nova_fase}' (usuário {usuario_id})")
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao atualizar fase: {e}")
+        return False
+
+
+# Executa a criação da tabela e migração na importação
 criar_tabela_insights()
+_migrar_colunas_usuario()
 
 if __name__ == "__main__":
     visualizador_reflexoes_terminal()
