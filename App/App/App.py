@@ -6,7 +6,7 @@ import os
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if root_dir not in sys.path: sys.path.insert(0, root_dir)
 
-import Backend.banco_dados as banco_dados
+import Backend.banco_dados_pg as banco_dados
 import Backend.LLM.ia_manager as ia_manager
 
 class State(rx.State):
@@ -42,6 +42,9 @@ class State(rx.State):
     # --- INSIGHTS STATE ---
     insight_input: str = ""
     last_insight: str = "Tudo começa com um pequeno passo..."
+    
+    # --- TRILHA HISTORICAL STATE ---
+    history_trail: list[dict] = []
     
     # --- CIRCLE INTERACTION ---
     selected_pilar: str = ""
@@ -99,11 +102,18 @@ class State(rx.State):
             self.onboarding_precisa = perfil["mundo_precisa"]
             self.onboarding_pago = perfil["pago_para"]
 
-        # Carrega último insight do SQLite
+        # Carrega último insight do PostgreSQL
         entries = banco_dados.buscar_insights_usuario(self.usuario_id, limite=1)
         if entries:
             self.last_insight = entries[0][1]
-
+            
+        # Carrega Histórico de Resumos do PostgreSQL (Trilhas)
+        ts = banco_dados.buscar_trilhas(self.usuario_id, limite=4)
+        historico_invertido = reversed(ts)
+        self.history_trail = []
+        for i, t in enumerate(historico_invertido):
+            resumo_curto = t[1][:75] + "..." if len(t[1]) > 75 else t[1]
+            self.history_trail.append({"index": str(i+1), "title": f"Sessão {i+1}", "resumo": resumo_curto, "full": t[1]})
 
     async def handle_submit(self):
         if not self.user_input: return
@@ -373,21 +383,23 @@ def trail_item(title: str, is_active: bool = False, is_locked: bool = True) -> r
 
 def meditation_trail() -> rx.Component:
     return rx.vstack(
-        rx.text("Sua Jornada Espaço Você", size="4", weight="bold", padding_bottom="1em"),
-        rx.hstack(
-            trail_item("Calma Matinal", is_active=True, is_locked=False),
-            rx.box(width="30px", height="2px", bg="#E2E8F0", margin_top="-20px"),
-            trail_item("Foco Profundo"),
-            rx.box(width="30px", height="2px", bg="#EDF2F7", margin_top="-20px"),
-            trail_item("Sono Zen"),
-            rx.box(width="30px", height="2px", bg="#EDF2F7", margin_top="-20px"),
-            trail_item("Ikigai Pleno"),
-            spacing="0",
-            overflow_x="auto",
-            width="100%",
-            padding_x="1em",
-            justify="center",
+        rx.text("Degraus do seu Ikigai", size="4", weight="bold", padding_bottom="1em"),
+        
+        rx.cond(
+            State.history_trail.length() > 0,
+            rx.hstack(
+                rx.foreach(State.history_trail, lambda item: rx.hstack(
+                    rx.tooltip(
+                        trail_item(item["title"], is_active=True, is_locked=False),
+                        content=item["resumo"]
+                    ),
+                    rx.box(width="30px", height="2px", bg="#EDF2F7", margin_top="-20px")
+                )),
+                spacing="0", overflow_x="auto", width="100%", padding_x="1em", justify="start",
+            ),
+            rx.text("Nenhuma sessão completada ainda. Converse com o Mentor para criar seu primeiro degrau!", size="2", italic=True, opacity=0.7)
         ),
+        
         bg=rx.match(
             State.tema,
             ("hacker", "black"),

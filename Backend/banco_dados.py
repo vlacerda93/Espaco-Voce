@@ -161,7 +161,7 @@ def buscar_insights_usuario(usuario_id, limite=5):
 
 # --- MIGRAÇÃO: Colunas de Memória Dinâmica ---
 def _migrar_colunas_usuario():
-    """Adiciona colunas fatos_diversos e fase_projeto se não existirem."""
+    """Adiciona colunas fatos_diversos, fase_projeto e last_session_summary se não existirem."""
     try:
         conn = sqlite3.connect(caminho_banco)
         cursor = conn.cursor()
@@ -174,10 +174,42 @@ def _migrar_colunas_usuario():
         if "fase_projeto" not in colunas:
             cursor.execute("ALTER TABLE usuarios ADD COLUMN fase_projeto TEXT DEFAULT 'Descoberta'")
             print("✅ Coluna 'fase_projeto' adicionada à tabela usuarios.")
+        if "last_session_summary" not in colunas:
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN last_session_summary TEXT DEFAULT ''")
+            print("✅ Coluna 'last_session_summary' adicionada à tabela usuarios.")
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"⚠️ Migração de colunas: {e}")
+
+
+def buscar_resumo_sessao(usuario_id):
+    """Retorna o resumo da última sessão do usuário."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("SELECT last_session_summary FROM usuarios WHERE id = ?", (usuario_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row and row[0] else ""
+    except Exception as e:
+        print(f"❌ Erro ao buscar resumo da sessão: {e}")
+        return ""
+
+
+def atualizar_resumo_sessao(usuario_id, resumo: str):
+    """Atualiza o resumo da última sessão sobrescrevendo o antigo."""
+    try:
+        conn = sqlite3.connect(caminho_banco)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE usuarios SET last_session_summary = ? WHERE id = ?", (resumo, usuario_id))
+        conn.commit()
+        conn.close()
+        print(f"💾 Resumo da Sessão atualizado para usuário {usuario_id}")
+        return True
+    except Exception as e:
+        print(f"❌ Erro ao atualizar resumo da sessão: {e}")
+        return False
 
 
 def buscar_fatos_usuario(usuario_id):

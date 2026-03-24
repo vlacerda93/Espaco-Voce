@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    container_name: espaco_voce_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-antigravity_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lLrDqhGInErfLi9EqXdRe5cbWp+oQ3cj}
+      POSTGRES_DB: ${POSTGRES_DB:-antigravity_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend-network
+
+volumes:
+  pgdata:
+
+networks:
+  backend-network:
+    driver: bridge

@@ -22,3 +22,5 @@ Thumbs.db
 .agent/
 .states/
 Brain.md
+*.txt
+*.log
