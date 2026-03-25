@@ -232,16 +232,29 @@ class State(rx.State):
 
     async def finish_session(self):
         """Dispara o resumo da IA e avança de passo na jornada."""
+        yield rx.toast.info("Salvando informações da sessão e encerrando...", position="top-center")
         self.is_sending = True
-        resumo = await ia_manager.concluir_passo_com_resumo(self.usuario_id)
+        yield
         
-        # Atualiza a UI com os novos dados
-        self.projeto_passo += 1
-        passos = banco_dados.buscar_jornada_passos(self.projeto_id)
-        self.jornada_passos = [{"num": p[0], "resumo": p[1]} for p in passos]
+        try:
+            resumo = await ia_manager.concluir_passo_com_resumo(self.usuario_id)
+            
+            # Atualiza a UI com os novos dados
+            self.projeto_passo += 1
+            passos = banco_dados.buscar_jornada_passos(self.projeto_id)
+            self.jornada_passos = [{"num": p[0], "resumo": p[1]} for p in passos]
+            
+            # Reset para nova sessão (Efeito 'Clean Start')
+            self.messages = []
+            self.interaction_count = 0
+            
+            yield rx.toast.success("Sessão finalizada com sucesso! Sua jornada avançou.", position="top-center")
+        except Exception as e:
+            print(f"Erro ao encerrar sessão: {e}")
+            yield rx.toast.error("Houve um problema ao salvar a sessão, mas estamos voltando.")
         
         self.is_sending = False
-        return rx.redirect("/")
+        yield rx.redirect("/")
 
     def handle_submit_enter(self, key: str):
         if key == "Enter":
