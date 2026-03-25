@@ -1,6 +1,0 @@
-source /home/vinicius/Documentos/Ikigai/espaco_voce/.venv/bin/activate
-cd /home/vinicius/Documentos/Ikigai/espaco_voce/App
-
-
-reflex run
-
