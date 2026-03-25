@@ -120,18 +120,40 @@ def criar_estruturas_iniciais():
             );
         """)
 
-        # Tabela de Trilhas (Histórico de Sessões/Resumos de Fechamento)
+        # 4. Tabela de Projetos Ativos (Máquina de Estados)
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS trilhas (
+            CREATE TABLE IF NOT EXISTS projetos_ativos (
                 id SERIAL PRIMARY KEY,
                 usuario_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                data TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                resumo TEXT
+                nome_projeto VARCHAR(255),
+                objetivo_geral TEXT,
+                passo_atual INTEGER DEFAULT 1,
+                ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
 
-        # Tabela Mock para o usuário Teste (id=1) 
-        # (Isso garante que o app não quebre se o usuário login "1" não existir no novo PG)
+        # 5. Tabela de Jornada (Resumo de cada passo concluído)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS jornada_passos (
+                id SERIAL PRIMARY KEY,
+                projeto_id INTEGER REFERENCES projetos_ativos(id) ON DELETE CASCADE,
+                numero_passo INTEGER,
+                resumo_decisoes TEXT,
+                status VARCHAR(20) DEFAULT 'concluido'
+            );
+        """)
+
+        # 6. Tabela Biblioteca de Teoria (RAG de Conhecimento - O Gabinete 3.0)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS biblioteca_teoria (
+                id SERIAL PRIMARY KEY,
+                titulo_livro VARCHAR(255),
+                conteudo_chunk TEXT,
+                vetor_conhecimento vector(384)
+            );
+        """)
+
+        # 7. Tabela Mock para o usuário Teste (id=1) 
         cur.execute("SELECT id FROM users WHERE username = 'admin'")
         if not cur.fetchone():
             from argon2 import PasswordHasher
@@ -142,6 +164,10 @@ def criar_estruturas_iniciais():
                 VALUES (1, 'admin', %s, 'Admin Master')
                 ON CONFLICT (id) DO NOTHING
             """, (hashe,))
+            
+            # Inicializa um projeto mock para o admin para a IA ter onde se situar
+            cur.execute("INSERT INTO projetos_ativos (usuario_id, nome_projeto, objetivo_geral, passo_atual) VALUES (1, 'Meu Projeto Ikigai Principal', 'Desenvolver um projeto que una minhas paixões', 1) ON CONFLICT DO NOTHING")
+            
             # Sincroniza a sequencia do serial
             cur.execute("SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));")
 
@@ -279,8 +305,66 @@ def buscar_reflexoes_similares(usuario_id, vetor_pergunta, limite=3):
         
         return resultados_decifrados
     except Exception as e:
-        print(f"❌ Erro na Busca Vetorial Semântica: {e}")
-        return [] # Fallback
+        print(f"❌ Erro na Busca Vetorial Semântica (Diário): {e}")
+        return []
+    finally:
+        conn.close()
+
+def buscar_teoria_similar(vetor_pergunta, limite=3):
+    """Busca na biblioteca de PDF os trechos teóricos mais próximos da dúvida do usuário."""
+    conn = get_connection()
+    try:
+        from pgvector.psycopg2 import register_vector
+        register_vector(conn)
+        
+        cur = conn.cursor()
+        query = """
+            SELECT titulo_livro, conteudo_chunk 
+            FROM biblioteca_teoria 
+            WHERE vetor_conhecimento IS NOT NULL
+            ORDER BY vetor_conhecimento <-> %s::vector 
+            LIMIT %s
+        """
+        cur.execute(query, (vetor_pergunta, limite))
+        return cur.fetchall()
+    except Exception as e:
+        print(f"❌ Erro na Busca Vetorial Semântica (Biblioteca): {e}")
+        return []
+    finally:
+        conn.close()
+
+def buscar_projeto_ativo(usuario_id):
+    """Retorna o projeto atual do usuário (nome, objetivo e PASSO ATUAL)."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor(cursor_factory=DictCursor)
+        cur.execute("SELECT id, nome_projeto, objetivo_geral, passo_atual FROM projetos_ativos WHERE usuario_id = %s ORDER BY ultima_atualizacao DESC LIMIT 1", (usuario_id,))
+        return dict(cur.fetchone()) if cur.rowcount > 0 else None
+    finally:
+        conn.close()
+
+def buscar_jornada_passos(projeto_id):
+    """Pega os resumos de todos os passos já concluídos."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT numero_passo, resumo_decisoes FROM jornada_passos WHERE projeto_id = %s ORDER BY numero_passo ASC", (projeto_id,))
+        return cur.fetchall()
+    finally:
+        conn.close()
+
+def atualizar_passo_projeto(projeto_id, novo_passo, resumo_decisoes=None):
+    """Atualiza o estado da jornada do usuário."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE projetos_ativos SET passo_atual = %s, ultima_atualizacao = NOW() WHERE id = %s", (novo_passo, projeto_id))
+        
+        if resumo_decisoes:
+            # Pega o número do passo anterior para salvar o resumo
+            cur.execute("INSERT INTO jornada_passos (projeto_id, numero_passo, resumo_decisoes) VALUES (%s, %s, %s)", (projeto_id, novo_passo - 1, resumo_decisoes))
+            
+        conn.commit()
     finally:
         conn.close()
 

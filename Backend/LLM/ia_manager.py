@@ -14,12 +14,16 @@ import Backend.banco_dados_pg as banco_dados
 
 load_dotenv()
 
-# CLIENTES DE API
-# Groq: Resolve as duas tarefas com modelos Llama
-groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+import google.generativeai as genai
+from groq import AsyncGroq
 
-# --- MODELO PRINCIPAL (resposta ao usuário) ---
-MODELO_PRINCIPAL = "llama-3.3-70b-versatile"
+# CLIENTES DE API
+# Groq: Tarefas leves (Extrator, Resumo)
+groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+# Gemini: Cérebro do Mentor (Chat)
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+model_gemini = genai.GenerativeModel("gemini-1.5-flash")
+
 # --- MODELO LEVE (extração de fatos pela Groq) ---
 MODELO_EXTRATOR = "llama-3.1-8b-instant"
 
@@ -143,10 +147,32 @@ async def analisar_sentimento_e_salvar(texto_usuario, usuario_id=1, sentimento_m
     memoria_passada = await buscar_historico(usuario_id, limite=3, vetor_busca=vetor_pergunta)
     fatos_diversos = banco_dados.buscar_fatos_usuario(usuario_id)
     fase_projeto = banco_dados.buscar_fase_projeto(usuario_id)
-    trilhas_passadas = banco_dados.buscar_trilhas(usuario_id, limite=4)
     insights_recentes = banco_dados.buscar_insights_usuario(usuario_id, limite=3)
 
-    # 2.1. DETECTOR DE INTENÇÃO (O Filtro do ConversaGemini2)
+    # 2.1. BUSCA TEÓRIA (PDFs) - O NOVO DIFERENCIAL 📚
+    # Busca na biblioteca de livros os trechos mais relevantes para a dúvida atual
+    teoria_encontrada = ""
+    if vetor_pergunta:
+        trechos_teoria = banco_dados.buscar_teoria_similar(vetor_pergunta, limite=2)
+        for titulo, conteudo in trechos_teoria:
+            teoria_encontrada += f"📖 [Fonte: {titulo}]:\n{conteudo[:400]}...\n\n"
+
+    # 2.2. MÁQUINA DE ESTADOS DO PROJETO (Estrutura Relacional) 🏛️
+    # Vê em qual passo do projeto o usuário está para não se repetir
+    projeto = banco_dados.buscar_projeto_ativo(usuario_id)
+    contexto_projeto = ""
+    if projeto:
+        p_id, p_nome, p_objetivo, p_passo = projeto["id"], projeto["nome_projeto"], projeto["objetivo_geral"], projeto["passo_atual"]
+        passos_concluidos = banco_dados.buscar_jornada_passos(p_id)
+        
+        contexto_projeto = f"# PROJETO ATUAL: {p_nome}\n# META: {p_objetivo}\n# PASSO ATUAL: {p_passo}\n"
+        if passos_concluidos:
+            contexto_projeto += "## RESUMO DO QUE JÁ FOI DECIDIDO (Não repita):\n"
+            for n_passo, resumo in passos_concluidos:
+                contexto_projeto += f"- Passo {n_passo}: {resumo}\n"
+        contexto_projeto += "\n"
+
+    # 2.3. DETECTOR DE INTENÇÃO (O Filtro do ConversaGemini2)
     # Identifica se o usuário quer saber um dado factual sobre si mesmo (cor, nome, etc)
     palavras_chave_busca = ["qual", "quem", "cor", "onde", "lembra", "sabia", "fatos", "conhece", "meu", "minha"]
     e_pergunta_direta = any(p in texto_usuario.lower() for p in palavras_chave_busca) and ("?" in texto_usuario or len(texto_usuario) < 40)
@@ -155,7 +181,7 @@ async def analisar_sentimento_e_salvar(texto_usuario, usuario_id=1, sentimento_m
         modo_sistema = "MODO BUSCA: Seja curto, direto e factual. Se o dado estiver nos [FATOS] ou [MEMÓRIA], responda sem rodeios. Não tente mentorar agora."
         temperatura_ia = 0.0 # Precisão total
     else:
-        modo_sistema = "MODO MENTOR: Seja empático, técnico e prático. Use o Ikigai como bússola."
+        modo_sistema = "MODO MENTOR ESTRATÉGICO: Use a teoria para guiar, mas foque no passo atual do projeto."
         temperatura_ia = 0.7 # Criatividade moderada
 
     # =============================================
@@ -165,49 +191,50 @@ async def analisar_sentimento_e_salvar(texto_usuario, usuario_id=1, sentimento_m
     hoje = datetime.date.today().strftime("%d/%m/%Y")
     
     prompt_sistema = (
-        f"# PERSONA: Core - Espaço Você ({modo_sistema})\n"
+        f"# PERSONA: Core - Mentor Estratégico ({modo_sistema})\n"
         f"Data Atual: {hoje}\n"
-        "Você é o motor de inteligência do app 'Espaço Você'. "
-        "Sua postura é de um Mentor Zen-Tech Sênior: direto, técnico e entusiasmado. \n"
-        "Siga rigorosamente as instruções do MODO atual.\n\n"
+        "Você é o Mentor Sênior do Espaço Você. Sua missão é ser um curador estratégico. \n"
+        "REGRAS DE OURO:\n"
+        "1. NÃO tente misturar todos os hobbies do usuário em um só projeto (evite 'mistura de hobbys').\n"
+        "2. Foque na CURADORIA: encontre as 2 ou 3 paixões com maior sinergia técnica e potencial de retorno.\n"
+        "3. Use a [TEORIA DO GABINETE] para dar autoridade à sua resposta.\n"
+        "4. RESPEITE O PASSO ATUAL: Se o usuário já resolveu os passos anteriores, não os mencione novamente.\n\n"
     )
 
+    if contexto_projeto:
+        prompt_sistema += f"[ESTADO DO PROJETO E JORNADA]\n{contexto_projeto}\n"
+    
     prompt_sistema += (
-        "[DADOS_DO_USUARIO]\n"
+        "[DADOS_DO_USUARIO (PARA SEU ENTENDIMENTO - NÃO REPETIR)]\n"
         f"- Nome: {nome_usuario}\n"
         f"- Humor Atual: {sentimento_manual}\n"
-        f"- O que ama (Paixão): {gosta}\n"
-        f"- No que é bom (Talento): {bom}\n"
-        f"- O que o mundo precisa (Missão): {precisa}\n"
-        f"- Pelo que pode ser pago (Renda): {pago}\n"
+        f"- O que ama: {gosta}\n"
+        f"- Talentos: {bom}\n"
+        f"- Missão: {precisa}\n"
+        f"- Renda: {pago}\n"
     )
     if fatos_diversos:
         prompt_sistema += (
-            "### [FATOS IMUTÁVEIS - O GABINETE] ###\n"
-            "Estes fatos são verdades absolutas sobre o usuário extraídas de conversas passadas. "
-            "Use-os para responder perguntas diretas sobre ele:\n"
+            "### [FATOS IMUTÁVEIS] ###\n"
             f"{fatos_diversos}\n\n"
+        )
+
+    if teoria_encontrada:
+        prompt_sistema += (
+            "### [CONHECIMENTO TEÓRICO (DO GABINETE)] ###\n"
+            "Use esses trechos para basear seus conselhos:\n"
+            f"{teoria_encontrada}\n"
         )
     
     prompt_sistema += f"- Fase do Projeto Atual: {fase_projeto}\n\n"
-
-    if trilhas_passadas:
-        prompt_sistema += "# TRILHA DE CAMINHO DO USUÁRIO (SESSÕES ANTERIORES)\n"
-        for idx, t_info in enumerate(reversed(trilhas_passadas)):
-            prompt_sistema += f"- Degrau {idx+1}: {t_info[1]}\n"
-        prompt_sistema += (
-            "Este é o caminho (Trilha) do usuário até aqui. "
-            "Ele evolui em passos contínuos. Entenda essa trilha e puxe ganchos. "
-            "Por exemplo, 'Já que na sessão passada você fez X, hoje podíamos pensar em Y'.\n\n"
-        )
 
     if insights_recentes:
         prompt_sistema += "# INSIGHTS DO USUÁRIO RECEBIDOS HOJE NO APP\n"
         for idx, t_info in enumerate(insights_recentes):
             prompt_sistema += f"- {t_info[1]}\n"
         prompt_sistema += (
-            "O usuário acabou de deixar essas anotações soltas no diário do app e logo em seguida abriu sua conversa. "
-            "Valide, ou comente super rapidamente sobre esse insight logo de cara para ele saber que você o ouviu.\n\n"
+            "O usuário acabou de deixar essas anotações soltas no diário do app. "
+            "Valide, ou comente super rapidamente sobre esse insight se fizer sentido para o passo atual.\n\n"
         )
 
     prompt_sistema += (
@@ -216,7 +243,10 @@ async def analisar_sentimento_e_salvar(texto_usuario, usuario_id=1, sentimento_m
         "- PROIBIDO repetir saudações em toda mensagem.\n"
         "- PROIBIDO fazer perguntas existenciais abertas no final.\n"
         "- PROIBIDO usar formatação exagerada. Mantenha sucinto.\n"
-        "- NUNCA declare que você é uma IA. Fale como humano mentor.\n\n"
+        "- NUNCA declare que você é uma IA. Fale como mentor estratégico sênior.\n\n"
+        "# GATILHO DE AVANÇO (CRÍTICO)\n"
+        "Se o usuário tomou uma decisão clara sobre o objetivo do passo atual e parece pronto para o próximo nível:\n"
+        "FINALIZE sua resposta com a tag exata: [AVANÇAR_PASSO: resumo curto da decisão].\n\n"
     )
 
     prompt_sistema += (
@@ -243,19 +273,30 @@ async def analisar_sentimento_e_salvar(texto_usuario, usuario_id=1, sentimento_m
             "Encerre concluindo o raciocínio. Dê um empurrão (Nudge) exigindo que ele vá para a ação agora e saia do chat.\n"
         )
 
-    # 4. ENVIA PARA A GROQ (Async)
+    # 4. ENVIA PARA O GEMINI (Mentor Principal) 🚀
     try:
-        chat_completion = await groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": prompt_sistema},
-                {"role": "user", "content": texto_usuario}
-            ],
-            model=MODELO_PRINCIPAL,
-            temperature=temperatura_ia,
+        # Gemini 1.5 Flash: limite alto, rápido e inteligente
+        response = await asyncio.to_thread(
+            model_gemini.generate_content,
+            f"{prompt_sistema}\n\nUsuário: {texto_usuario}",
+            generation_config=genai.types.GenerationConfig(
+                temperature=temperatura_ia,
+                max_output_tokens=1024,
+            )
         )
-        resposta_ia = chat_completion.choices[0].message.content
+        resposta_ia = response.text
     except Exception as e:
-        return f"❌ Erro na comunicação com a IA: {e}"
+        print(f"❌ Erro no Gemini: {e}")
+        # Fallback para Groq 8B em caso de falha crítica
+        try:
+            chat_completion = await groq_client.chat.completions.create(
+                messages=[{"role": "system", "content": prompt_sistema}, {"role": "user", "content": texto_usuario}],
+                model=MODELO_EXTRATOR,
+                temperature=temperatura_ia,
+            )
+            resposta_ia = chat_completion.choices[0].message.content
+        except Exception as e2:
+            return f"⚠️ Mentor temporariamente instável. Erro: {e2}"
 
     # 5. SALVA NO BANCO POSTGRES COM VETOR
     try:
@@ -272,6 +313,43 @@ async def analisar_sentimento_e_salvar(texto_usuario, usuario_id=1, sentimento_m
         print(f"\n❌ Erro ao salvar no banco: {e}")
 
     return resposta_ia
+
+async def concluir_passo_com_resumo(usuario_id: int):
+    """
+    Função final de sessão: Analisa as decisões e gera o resumo para a Jornada.
+    """
+    # 1. Busca os dados do projeto
+    projeto = banco_dados.buscar_projeto_ativo(usuario_id)
+    if not projeto: return "Nenhum projeto ativo para encerrar."
+    
+    p_id = projeto["id"]
+    p_passo = projeto["passo_atual"]
+    
+    # 2. Busca histórico da conversa
+    mensagens = banco_dados.visualizar_reflexoes_usuario(usuario_id, limite=15)
+    conversa = "\n".join([f"{'User' if m[3] else 'IA'}: {m[2]}" for m in mensagens])
+    
+    prompt_conclusao = (
+        "Você é um Mentor Estratégico. Baseado na conversa acima, gere um RESUMO EXECUTIVO "
+        "de exatamente UM PARÁGRAFO (máx 300 caracteres) sobre o que foi decidido e qual o próximo passo. "
+        "Seja direto e encorajador. Formato: 'Vencemos o passo X. Decidimos Y. Próxima meta é Z.'\n\n"
+        f"Conversa:\n{conversa}"
+    )
+
+    try:
+        # Usa o Gemini para um resumo mais inteligente
+        response = await asyncio.to_thread(
+            model_gemini.generate_content,
+            prompt_conclusao
+        )
+        resumo = response.text.strip()
+        
+        # 3. Salva na Jornada e Avança o Passo no Banco
+        banco_dados.atualizar_passo_projeto(p_id, p_passo + 1, resumo)
+        return resumo
+    except Exception as e:
+        print(f"❌ Erro ao concluir sessão: {e}")
+        return "Sessão concluída, mas houve erro ao gerar o resumo técnico."
 
 if __name__ == "__main__":
     async def main():

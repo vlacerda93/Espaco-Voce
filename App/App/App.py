@@ -24,6 +24,8 @@ class State(rx.State):
 
     def set_tema(self, val): self.tema = val
 
+    # --- AUTH STATE ---
+    is_logged_in: bool = False
     
     # --- ONBOARDING STATE ---
     show_onboarding: bool = False
@@ -39,12 +41,29 @@ class State(rx.State):
         {"e": "😤", "l": "Ansioso"}, {"e": "🤔", "l": "Reflexivo"}
     ]
     
+    # --- UI STATE ---
+    is_processing: bool = False
+    is_sending: bool = False
+    user_input: str = ""
+    messages: list[dict[str, str]] = []
+    
     # --- INSIGHTS STATE ---
     insight_input: str = ""
     last_insight: str = "Tudo começa com um pequeno passo..."
     
     # --- TRILHA HISTORICAL STATE ---
     history_trail: list[dict] = []
+    
+    # --- PROJECT STATE (Espaço Você 3.0) ---
+    projeto_id: int = 0
+    projeto_nome: str = "Nenhum Projeto Ativo"
+    projeto_objetivo: str = ""
+    projeto_passo: int = 1
+    projeto_frase: str = "Início da Jornada" # Frase curta sobre a fase
+    jornada_passos: list[dict] = []
+    
+    # --- DYNAMIC PURPOSE ---
+    proposito_sugerido: str = "Tudo começa com um pequeno passo..." # Frase que muda conforme Ikigai
     
     # --- CIRCLE INTERACTION ---
     selected_pilar: str = ""
@@ -68,7 +87,11 @@ class State(rx.State):
     def set_onboarding_precisa(self, val: str): self.onboarding_precisa = val
     def set_onboarding_pago(self, val: str): self.onboarding_pago = val
     
-    def set_onboarding_step(self, step: int): self.onboarding_step = step
+    def set_onboarding_step(self, step: int): 
+        self.onboarding_step = step
+
+    def next_onboarding_step(self): self.onboarding_step += 1
+    def prev_onboarding_step(self): self.onboarding_step -= 1
 
     def finish_onboarding(self):
         success = banco_dados.atualizar_perfil_ikigai(
@@ -109,11 +132,59 @@ class State(rx.State):
             
         # Carrega Histórico de Resumos do PostgreSQL (Trilhas)
         ts = banco_dados.buscar_trilhas(self.usuario_id, limite=4)
-        historico_invertido = reversed(ts)
+        historico_invertido = list(reversed(ts))
         self.history_trail = []
         for i, t in enumerate(historico_invertido):
             resumo_curto = t[1][:75] + "..." if len(t[1]) > 75 else t[1]
             self.history_trail.append({"index": str(i+1), "title": f"Sessão {i+1}", "resumo": resumo_curto, "full": t[1]})
+
+        # --- CARREGA ESTADO DO PROJETO 3.0 ---
+        projeto_data = banco_dados.buscar_projeto_ativo(self.usuario_id)
+        if projeto_data:
+            self.projeto_id = projeto_data["id"]
+            self.projeto_nome = projeto_data["nome_projeto"]
+            self.projeto_objetivo = projeto_data["objetivo_geral"]
+            self.projeto_passo = projeto_data["passo_atual"]
+            
+            # --- ATUALIZA FRASE DO STATUS (Ponto 3) ---
+            fases = {
+                1: "Plantando Sementes 🧬", 2: "Explorando Horizontes 🌏", 
+                3: "Conectando Pontos 🔗", 4: "Manifestando Intenção ✨",
+                5: "Colhendo Frutos 🍎"
+            }
+            self.projeto_frase = fases.get(self.projeto_passo, "Caminhando...")
+
+            # --- GERA PROPÓSITO DINÂMICO (Ponto 2) ---
+            if self.onboarding_gosta and self.onboarding_precisa:
+                g_txt = self.onboarding_gosta.replace("Eu amo ", "").replace("Eu gosto de ", "").strip()
+                p_txt = self.onboarding_precisa.replace("Eu sinto que o mundo precisa de ", "").replace("O mundo precisa de ", "").strip()
+                
+                # Slicing super generoso (250 chars) para frases completas
+                g = (g_txt[:250] + "...") if len(g_txt) > 250 else g_txt
+                p = (p_txt[:250] + "...") if len(p_txt) > 250 else p_txt
+                
+                self.proposito_sugerido = f"Use sua paixão por '{g}' para suprir a necessidade de '{p}' no mundo hoje."
+            else:
+                self.proposito_sugerido = "Baseado no seu Ikigai, hoje é um bom dia para focar no seu propósito."
+
+            
+        # Se chegamos aqui, o usuário já tem dados básicos, podemos considerar logado
+        if perfil:
+            self.is_logged_in = True
+            
+            # Carrega os passos concluídos da jornada
+            if self.projeto_id:
+                passos = banco_dados.buscar_jornada_passos(self.projeto_id)
+                self.jornada_passos = [{"num": p[0], "resumo": p[1]} for p in passos]
+
+    def logout(self):
+        self.is_logged_in = False
+        return rx.redirect("/")
+
+    def login_mock(self, provider: str):
+        # Mock de login social
+        self.is_logged_in = True
+        return rx.toast.info(f"Conectado via {provider}!")
 
     async def handle_submit(self):
         if not self.user_input: return
@@ -128,11 +199,49 @@ class State(rx.State):
         
         res = await ia_manager.analisar_sentimento_e_salvar(txt, self.usuario_id, self.sentiment, is_last_message)
         
+        # --- INTERCEPTADOR DE TAGS (Espaço Você 3.0) 🔴 ---
+        # Detecta se a IA decidiu avançar o passo do projeto
+        if "[AVANÇAR_PASSO:" in res:
+            try:
+                # Extrai o resumo entre a tag
+                tag_parts = res.split("[AVANÇAR_PASSO:")
+                clean_res = tag_parts[0].strip()
+                resumo_decisao = tag_parts[1].split("]")[0].strip()
+                
+                if self.projeto_id > 0:
+                    # Gera o UPDATE no banco
+                    novo_passo = self.projeto_passo + 1
+                    banco_dados.atualizar_passo_projeto(self.projeto_id, novo_passo, resumo_decisao)
+                    
+                    # Atualiza o estado da UI na hora
+                    self.projeto_passo = novo_passo
+                    # Recarrega a jornada
+                    passos = banco_dados.buscar_jornada_passos(self.projeto_id)
+                    self.jornada_passos = [{"num": p[0], "resumo": p[1]} for p in passos]
+                
+                # Substitui a resposta pela versão limpa (sem a tag)
+                res = clean_res
+            except Exception as e:
+                print(f"⚠️ Erro ao processar avanço de passo: {e}")
+
         if is_last_message:
             self.interaction_count = 0
             
         self.messages.append({"role": "assistant", "content": res})
         self.is_processing = False
+
+    async def finish_session(self):
+        """Dispara o resumo da IA e avança de passo na jornada."""
+        self.is_sending = True
+        resumo = await ia_manager.concluir_passo_com_resumo(self.usuario_id)
+        
+        # Atualiza a UI com os novos dados
+        self.projeto_passo += 1
+        passos = banco_dados.buscar_jornada_passos(self.projeto_id)
+        self.jornada_passos = [{"num": p[0], "resumo": p[1]} for p in passos]
+        
+        self.is_sending = False
+        return rx.redirect("/")
 
     def handle_submit_enter(self, key: str):
         if key == "Enter":
@@ -310,21 +419,7 @@ def ikigai() -> rx.Component:
 
 def navbar() -> rx.Component:
     return rx.hstack(
-        rx.hstack(
-            rx.icon(tag="shield-check", color=rx.match(
-                State.tema,
-                ("hacker", "#00FF41"),
-                ("zen_rose", "#C77D9A"),
-                ("#5C6BC0")
-            ), size=24),
-            rx.heading("ANTIGRAVITY", size="5", weight="bold", color=rx.match(
-                State.tema,
-                ("hacker", "#00FF41"),
-                ("zen_rose", "#C77D9A"),
-                ("#5C6BC0")
-            ), font_family="monospace"),
-            spacing="3",
-        ),
+        rx.image(src="/logo.png", width="150px"),
         rx.spacer(),
         rx.segmented_control.root(
             rx.segmented_control.item("Hacker 💻", value="hacker"),
@@ -335,6 +430,15 @@ def navbar() -> rx.Component:
             value=State.tema,
             variant="classic",
             radius="large",
+        ),
+        rx.button(
+            rx.icon(tag="log-out", size=18),
+            on_click=State.logout,
+            variant="ghost",
+            color_scheme="ruby",
+            radius="full",
+            id="logout-button",
+            _hover={"bg": "rgba(255,0,0,0.1)"}
         ),
         width="100%",
         padding="1.5em",
@@ -369,11 +473,11 @@ def trail_item(title: str, is_active: bool = False, is_locked: bool = True) -> r
             bg=rx.match(
                 State.tema,
                 ("hacker", rx.cond(is_locked, "#001100", rx.cond(is_active, "#00FF41", "#003B00"))),
-                ("zen_rose", rx.cond(is_locked, "rgba(255,255,255,0.3)", rx.cond(is_active, "#C77D9A", "#E8B4CB"))),
-                rx.cond(is_locked, "#EDF2F7", rx.cond(is_active, "#70BFB6", "#A0AEC0"))
+                ("zen_rose", rx.cond(is_locked, "rgba(255,255,255,0.4)", rx.cond(is_active, "#E5989B", "#FFB4A2"))),
+                rx.cond(is_locked, "#EDF2F7", rx.cond(is_active, "#4895EF", "#A0AEC0"))
             ),
-            color=rx.cond(is_active, "white", rx.cond(State.tema == "hacker", "#003B00", "#718096")),
-            box_shadow=rx.cond(is_active, rx.match(State.tema, ("zen_rose", "0 0 15px rgba(199, 125, 154, 0.4)"), "lg"), "none"),
+            color=rx.cond(is_active, "white", rx.match(State.tema, ("zen_rose", "#6D597A"), ("hacker", "#003B41"), "#718096")),
+            box_shadow=rx.cond(is_active, rx.match(State.tema, ("zen_rose", "0 0 20px rgba(229, 152, 155, 0.4)"), "lg"), "none"),
             border=rx.cond(is_active, "2px solid white", "none"),
         ),
         rx.text(title, size="1", weight="medium", width="60px", text_align="center", color=rx.match(State.tema, ("zen_rose", "#C77D9A"), ("hacker", "#00FF41"), "#718096")),
@@ -386,18 +490,25 @@ def meditation_trail() -> rx.Component:
         rx.text("Degraus do seu Ikigai", size="4", weight="bold", padding_bottom="1em"),
         
         rx.cond(
-            State.history_trail.length() > 0,
+            State.jornada_passos.length() > 0, 
             rx.hstack(
-                rx.foreach(State.history_trail, lambda item: rx.hstack(
+                rx.foreach(State.jornada_passos, lambda item: rx.hstack(
                     rx.tooltip(
-                        trail_item(item["title"], is_active=True, is_locked=False),
+                        trail_item("Passo Concluído", is_active=False, is_locked=False),
                         content=item["resumo"]
                     ),
                     rx.box(width="30px", height="2px", bg="#EDF2F7", margin_top="-20px")
                 )),
+                rx.tooltip(
+                    trail_item("Você está aqui", is_active=True, is_locked=False),
+                    content="Aguardando a conclusão dos objetivos atuais."
+                ),
                 spacing="0", overflow_x="auto", width="100%", padding_x="1em", justify="start",
             ),
-            rx.text("Nenhuma sessão completada ainda. Converse com o Mentor para criar seu primeiro degrau!", size="2", italic=True, opacity=0.7)
+            rx.hstack(
+                trail_item("Passo 1", is_active=True, is_locked=False),
+                rx.text("Iniciando jornada...", size="2", italic=True, opacity=0.7)
+            )
         ),
         
         bg=rx.match(
@@ -443,14 +554,14 @@ def card_custom(title: str, content: rx.Component, icon: str = "", footer: rx.Co
         box_shadow=rx.match(
             State.tema,
             ("hacker", "0 0 20px rgba(0,255,65,0.1)"),
-            ("zen_rose", "0 10px 40px rgba(199, 125, 154, 0.1)"),
-            "0 8px 32px rgba(0,0,0,0.05)"
+            ("zen_rose", "0 10px 40px rgba(229, 152, 155, 0.15)"),
+            "0 10px 30px rgba(0,0,0,0.06)"
         ),
         border=rx.match(
             State.tema,
             ("hacker", "1px solid #00FF41"),
-            ("zen_rose", "1px solid rgba(255, 255, 255, 0.5)"),
-            "1px solid rgba(0,0,0,0.1)"
+            ("zen_rose", "1px solid rgba(255, 255, 255, 0.6)"),
+            "1px solid rgba(72, 149, 239, 0.1)"
         ),
         width="100%",
         align_items="start",
@@ -553,21 +664,82 @@ def onboarding_view() -> rx.Component:
     )
 
 
+# --- LOGIN PAGE (AUTH SOCIAL) ---
+def login_page() -> rx.Component:
+    return rx.center(
+        rx.vstack(
+            rx.image(src="/logo.png", width="250px", margin_bottom="2em"),
+            rx.heading("Desperte seu Ikigai", size="8", weight="bold", color="white"),
+            rx.text("Conecte-se para continuar sua jornada de autodescoberta.", size="3", color="white", opacity=0.8),
+            
+            rx.vstack(
+                rx.button(
+                    rx.hstack(
+                        rx.icon(tag="chrome"),
+                        rx.text("Entrar com Google"),
+                        spacing="2"
+                    ),
+                    on_click=lambda: State.login_mock(provider="Google"),
+                    width="100%",
+                    size="4",
+                    bg="white",
+                    color="black",
+                    _hover={"bg": "#f8f9fa", "transform": "scale(1.02)"},
+                    radius="full",
+                    id="google-login-button"
+                ),
+                rx.button(
+                    rx.hstack(
+                        rx.icon(tag="github"),
+                        rx.text("Entrar com GitHub"),
+                        spacing="2"
+                    ),
+                    on_click=lambda: State.login_mock(provider="GitHub"),
+                    width="100%",
+                    size="4",
+                    bg="#24292e",
+                    color="white",
+                    _hover={"bg": "#1b1f23", "transform": "scale(1.02)"},
+                    radius="full",
+                    id="github-login-button"
+                ),
+                spacing="4",
+                width="100%",
+                padding_top="2em"
+            ),
+            
+            spacing="4",
+            padding="4em",
+            bg="rgba(255, 255, 255, 0.05)",
+            backdrop_filter="blur(20px)",
+            border="1px solid rgba(255, 255, 255, 0.1)",
+            border_radius="3xl",
+            max_width="450px",
+            align_items="center"
+        ),
+        width="100%",
+        height="100vh",
+        background="radial-gradient(circle at 50% 50%, #1E88E5 0%, #0F172A 100%)" # Azul Royal Pro para o login
+    )
+
 def index() -> rx.Component:
     return rx.box(
         rx.cond(
-            State.show_onboarding,
-            onboarding_view(),
-            rx.box(
-                # --- BACKGROUND (PRO 3.0) ---
+            State.is_logged_in,
+            rx.cond(
+                State.show_onboarding,
+                onboarding_view(),
                 rx.box(
-                    position="fixed", top="0", left="0", width="100%", height="100%",
+                    # --- DASHBOARD CONTENT ---
+                    # --- BACKGROUND (PRO 3.0) ---
+                    rx.box(
+                        position="fixed", top="0", left="0", width="100%", height="100%",
                     background=rx.match(
                         State.tema,
                         ("hacker", "radial-gradient(circle at 80% 10%, rgba(0,255,65,0.05), transparent 50%), #000"),
                         ("low_dark", "radial-gradient(circle at 20% 20%, rgba(92,107,192,0.1), transparent 50%), #0F172A"),
-                        ("zen_rose", "radial-gradient(circle at 70% 20%, rgba(232,180,203,0.2), transparent 50%), radial-gradient(circle at 30% 80%, rgba(252,237,178,0.25), transparent 50%), radial-gradient(circle at 50% 50%, rgba(199, 125, 154, 0.05), transparent 70%), #FFFDF5"),
-                        "radial-gradient(circle at 80% 10%, rgba(238,195,115,0.15), transparent 50%), #F7FAFC" # Light default
+                        ("zen_rose", "#9B5DE5"), # ROXO VIBRANTE (TESTE)
+                        "#1E88E5" # AZUL ROYAL (TESTE)
                     ),
                     z_index="-1",
                 ),
@@ -584,10 +756,10 @@ def index() -> rx.Component:
                     rx.vstack(
                         # --- HEADER ---
                         rx.vstack(
-                            rx.text("Bem-vindo de volta", size="2", weight="medium", color="#718096", opacity=0.8),
-                            rx.heading(f"Olá, {State.nome_usuario}", size="8", weight="bold"),
+                            rx.heading(f"Olá de novo, {State.nome_usuario}!", size="9", weight="bold", color="white", on_click=lambda: State.set_show_onboarding(True), cursor="pointer"),
+                            rx.text("O que vamos fazer aqui no seu espaço hoje?", size="4", weight="medium", color="white", opacity=0.9),
                             align_items="center",
-                            padding_top="1em",
+                            padding_top="2em",
                         ),
                         
                         # --- IKIGAI DIAGRAM ---
@@ -633,8 +805,20 @@ def index() -> rx.Component:
                                     footer=rx.text(f"Último Insight: {State.last_insight}", size="1", italic=True, opacity=0.7, padding_top="1em")
                                 ),
                                 card_custom(
+                                    "Status do Projeto",
+                                    rx.vstack(
+                                        rx.heading(State.projeto_nome, size="4", color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", "#C77D9A"), "inherit")),
+                                        rx.text(State.projeto_frase, size="2", weight="bold", color="grass"), # Frase da fase
+                                        rx.text(f"Objetivo: {State.projeto_objetivo}", size="1", opacity=0.8),
+                                        rx.badge(f"PASSO {State.projeto_passo}", color_scheme="grass", variant="outline"),
+                                        width="100%",
+                                        spacing="2",
+                                    ),
+                                    icon="rocket"
+                                ),
+                                card_custom(
                                     "Propósito Sugerido",
-                                    rx.text("Baseado no seu Ikigai, hoje é um bom dia para focar em ajudar pessoas com tecnologia.", size="2", italic=True),
+                                    rx.text(State.proposito_sugerido, size="2", italic=True),
                                     icon="sparkles"
                                 ),
                                 spacing="4",
@@ -679,22 +863,18 @@ def index() -> rx.Component:
                         max_width="750px", 
                         margin_x="auto",
                     )
+                    )
                 ),
-            )
+            ),
+            login_page()
         ),
-        background=rx.match(
-            State.tema,
-            ("hacker", "black"),
-            ("low_dark", "#1A1B26"),
-            ("zen_rose", "#FFFDF5"),
-            "#F0F2F5" # default light
-        ),
+        background="transparent",
         color=rx.match(
             State.tema,
             ("hacker", "#00FF41"),
             ("low_dark", "#A9B1D6"),
-            ("zen_rose", "#C77D9A"), # Soft pastel rose for text
-            "#333" # default light
+            ("zen_rose", "white"),
+            "white" 
         ),
         on_mount=State.on_load
     )
@@ -709,16 +889,16 @@ def chat_page() -> rx.Component:
                 State.tema,
                 ("hacker", "black"),
                 ("low_dark", "#0F172A"),
-                ("zen_rose", "radial-gradient(circle at 70% 20%, rgba(232,180,203,0.15), transparent 50%), #FFFDF5"),
-                "linear-gradient(160deg, #FDFCFB 0%, #D8E5D8 100%)"
+                ("zen_rose", "#9B5DE5"), # ROXO VIBRANTE
+                "#1E88E5" # AZUL FORTE
             ),
             z_index="-1",
         ),
         rx.container(
             rx.vstack(
                 rx.hstack(
-                    rx.button(rx.icon(tag="arrow-left"), on_click=lambda: rx.redirect("/"), variant="ghost", color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", "#C77D9A"), "inherit")),
-                    rx.heading("Mentor IA", size="6", weight="bold", color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", "#C77D9A"), "inherit")),
+                    rx.button(rx.icon(tag="arrow-left"), on_click=lambda: rx.redirect("/"), variant="ghost", color=rx.match(State.tema, ("hacker", "#00FF41"), ("zen_rose", "#E5989B"), "inherit")),
+                    rx.image(src="/logo.png", width="150px"),
                     justify="start",
                     width="100%",
                     padding_y="1em",
@@ -778,10 +958,18 @@ def chat_page() -> rx.Component:
                         radius="full",
                         color_scheme=rx.match(State.tema, ("zen_rose", "crimson"), "grass"),
                     ),
+                    rx.button(
+                        rx.icon(tag="check-check"),
+                        on_click=State.finish_session,
+                        radius="full",
+                        variant="soft",
+                        color_scheme="ruby",
+                        tooltip="Encerrar Sessão e Avançar Passo",
+                    ),
                     width="100%",
                     spacing="3",
                 ),
-                max_width="600px",
+                max_width="700px",
             ),
             bg=rx.match(
                 State.tema,
