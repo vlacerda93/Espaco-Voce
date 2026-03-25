@@ -80,6 +80,7 @@ def criar_estruturas_iniciais():
             ("fatos_diversos", "TEXT DEFAULT ''"),
             ("fase_projeto", "VARCHAR(50) DEFAULT 'Descoberta'"),
             ("last_session_summary", "TEXT DEFAULT ''"),
+            ("firebase_uid", "VARCHAR(255) UNIQUE"),
         ]
 
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='users';")
@@ -212,6 +213,50 @@ def adicionar_trilha(usuario_id, resumo):
         conn.rollback()
         print(f"❌ Erro ao salvar trilha: {e}")
         return False
+    finally:
+        conn.close()
+
+def buscar_ou_criar_usuario(username, firebase_uid=None, email=None, nome=None):
+    """Busca ou cria um usuário pelo username ou firebase_uid e garante um projeto ativo inicial."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor(cursor_factory=DictCursor)
+        
+        # Prioridade para o UID do Firebase (segurança máxima)
+        if firebase_uid:
+            cur.execute("SELECT id, nome FROM users WHERE firebase_uid = %s", (firebase_uid,))
+        else:
+            cur.execute("SELECT id, nome FROM users WHERE username = %s", (username,))
+        
+        user = cur.fetchone()
+        
+        if not user:
+            # Dados padrão se não houver nome
+            final_name = nome if nome else username
+            final_email = email if email else ""
+            
+            # Cria novo usuário com UID do Firebase
+            cur.execute("""
+                INSERT INTO users (username, firebase_uid, password_hash, nome, email) 
+                VALUES (%s, %s, 'social_login_real', %s, %s) 
+                RETURNING id
+            """, (username, firebase_uid, final_name, final_email))
+            user_id = cur.fetchone()[0]
+            
+            # Cria projeto inicial para o novo usuário
+            cur.execute("""
+                INSERT INTO projetos_ativos (usuario_id, nome_projeto, objetivo_geral, passo_atual)
+                VALUES (%s, 'Meu Caminho Ikigai', 'Definir o propósito principal', 1)
+            """, (user_id,))
+            
+            conn.commit()
+            return {"id": user_id, "nome": final_name, "is_new": True}
+        
+        return {"id": user["id"], "nome": user["nome"], "is_new": False}
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ Erro ao buscar/criar usuário: {e}")
+        return None
     finally:
         conn.close()
 

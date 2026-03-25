@@ -6,6 +6,10 @@ env/
 # Configurações e Segredos
 .env
 
+# Firebase - Chaves Secretas (NUNCA commitar!)
+FireBase/
+*.json
+
 # Banco de Dados
 SQL/*.db
 
