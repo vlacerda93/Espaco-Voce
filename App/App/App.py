@@ -13,7 +13,8 @@ import Backend.LLM.ia_manager as ia_manager
 import Backend.auth_manager as auth_manager
 
 # --- FIREBASE SETUP ---
-firebase_script = f"""
+# Script 1: módulo ES6 que inicializa o Firebase e expõe os objetos via window
+firebase_module_script = f"""
 import {{ initializeApp }} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import {{ getAuth, GoogleAuthProvider, signInWithPopup }} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
@@ -30,28 +31,52 @@ const firebaseApp = initializeApp(firebaseConfig);
 const firebaseAuth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 
-// Armazena o token globalmente para o Reflex buscar via callback
+// Expõe os objetos no window para que o script não-módulo possa acessá-los
+window._firebaseAuth = firebaseAuth;
+window._googleProvider = googleProvider;
+window._GoogleAuthProvider = GoogleAuthProvider;
+window._signInWithPopup = signInWithPopup;
+window._firebaseReady = true;
+"""
+
+# Script 2: script normal (não-módulo) que define loginWithGoogle globalmente
+# Precisa aguardar o módulo carregar primeiro
+firebase_bridge_script = """
 window._googleIdToken = null;
 
-window.loginWithGoogle = async () => {{
-  try {{
-    const result = await signInWithPopup(firebaseAuth, googleProvider);
+window.loginWithGoogle = async function() {
+  // Aguarda o Firebase estar pronto (o módulo pode demorar ms para inicializar)
+  let attempts = 0;
+  while (!window._firebaseReady && attempts < 50) {
+    await new Promise(r => setTimeout(r, 100));
+    attempts++;
+  }
+  if (!window._firebaseReady) {
+    alert("Firebase não inicializou corretamente. Recarregue a página.");
+    return null;
+  }
+  try {
+    const result = await window._signInWithPopup(window._firebaseAuth, window._googleProvider);
     const token = await result.user.getIdToken();
     window._googleIdToken = token;
     return token;
-  }} catch (error) {{
+  } catch (error) {
     console.error("Erro no login Google:", error);
     alert("Falha no login: " + error.message);
     return null;
-  }}
-}};
+  }
+};
 """
 
 def firebase_init():
-    return rx.script(firebase_script, type="module")
+    """Injeta o módulo ES6 do Firebase + o script de bridge global."""
+    return rx.fragment(
+        rx.script(firebase_module_script, type="module"),
+        rx.script(firebase_bridge_script),
+    )
 
 def auth_bridge():
-    """Script vazio - o login agora é feito diretamente via on_click com callback do Reflex."""
+    """Compatibilidade - mantido vazio pois o firebase_init já injeta tudo."""
     return rx.fragment()
 
 class State(rx.State):
